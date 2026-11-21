@@ -1,0 +1,30 @@
+# Python & virtual environments
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Datasets, caches, and model weights
+data/
+checkpoints/
+outputs/
+wheels/
+third_party/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+*.zip
+*.tar
+*.tar.gz
+
+# Logs and temporary files
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

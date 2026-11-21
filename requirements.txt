@@ -1,0 +1,18 @@
+# Install PyTorch with CUDA matching your NVIDIA driver first, for example:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+numpy>=1.26.0
+scipy>=1.11.0
+pillow>=10.0.0
+pyyaml>=6.0
+tqdm>=4.66.0
+einops>=0.7.0
+matplotlib>=3.8.0
+safetensors>=0.4.0
+huggingface_hub>=0.23.0
+transformers>=4.41.0
+diffusers>=0.29.0
+peft>=0.11.0
+lpips>=0.1.4
+fvcore>=0.1.5
+insightface>=0.7.3
+onnxruntime-gpu>=1.18.0
