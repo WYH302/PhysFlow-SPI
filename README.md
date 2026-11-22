@@ -27,18 +27,18 @@ The framework combines three lightweight, physically grounded components:
 ### Key Benchmark Results (Single RTX 3090 24 GB)
 - **Training Cost**: `1.39` GPU-hours total (`83.29` min across Stage 1A + 1B + E2E), `2.80 GB` peak VRAM, `42.73M` trainable parameters (`13.68%` of `312.26M`).
 - **Inference Throughput**: `55.9 FPS` (`17.88 ms`, `5.55 GFLOPs`) for reconstruction-free 106-point landmark & 40-attribute inference; `2.25 FPS` (`0.44 s/img`) for 8-step and `1.15 FPS` (`0.87 s/img`) for 16-step $512 \times 512$ synthesis (`2.95x` faster than LSI at `2.57 s/img`).
+- **Full-Cohort CelebA-HQ (`N = 479` Strictly Identity-Disjoint Portraits, Inception-v3 FID)**:
 
-| Method | CelebA-HQ $M=64$ AdaFace $\uparrow$ | NME106 $\downarrow$ | LPIPS $\downarrow$ | PSNR (dB) $\uparrow$ | RelRes $\downarrow$ | CelebA $M=256$ AdaFace $\uparrow$ | PSNR (dB) $\uparrow$ | Latency (s/img) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Tikhonov Back-Proj. | 0.0085 | 0.2595* | 0.8186 | 12.40 | 0.0069 | --- | --- | 0.0001 |
-| Wiener-LMMSE | 0.0248 | 0.0939 | 0.7315 | 17.06 | 0.0052 | --- | --- | 0.0001 |
-| Text Bridge (B0-Disc.) | 0.0088 | 0.8130 | 0.7434 | 9.80 | 0.3369 | 0.0171 | 10.44 | 0.74 |
-| PnP-Flow (ICLR 2025) | 0.0285 | 0.3434 | 0.6788 | 12.66 | 0.0122 | --- | --- | 1.01 |
-| ZS-FLOWER (ICLR 2026) | -0.0034 | 0.3751 | 0.6691 | 11.68 | 0.0134 | 0.0080 | 14.37 | 0.70 |
-| LSI (CVPR 2025) | -0.0125 | 0.1388 | 0.7264 | 7.46 | 0.3742 | 0.1351 | 17.53 | 2.57 |
-| **PhysFlow (Ours)** | **0.0300** | **0.0869** | **0.6329** | **17.29** | **0.0046** | **0.1761** | **20.48** | **0.87** |
+| Method | $M=64$ FID $\downarrow$ | $M=64$ AdaFace $\uparrow$ | $M=64$ NME106 $\downarrow$ | $M=64$ LPIPS $\downarrow$ | $M=64$ PSNR $\uparrow$ | $M=256$ FID $\downarrow$ | $M=256$ AdaFace $\uparrow$ | $M=256$ PSNR $\uparrow$ | $M=256$ RelRes $\downarrow$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| TV-FISTA (CS) | 373.91 | 0.0137 | ---* | 0.8561 | 13.74 | 349.62 | 0.0236 | 14.08 | 0.0100 |
+| Wiener-LMMSE | 200.17 | 0.0295 | 0.0869 | 0.7276 | 17.30 | 175.28 | 0.1485 | 19.46 | 0.0034 |
+| PnP-Flow (ICLR 2025) | 146.94 | 0.0051 | 0.4090 | 0.6899 | 12.60 | 147.65 | 0.0212 | 15.86 | 0.0101 |
+| ZS-FLOWER (ICLR 2026) | 149.67 | 0.0037 | 0.4121 | 0.6606 | 11.75 | 181.94 | 0.0060 | 14.02 | 0.0101 |
+| LSI (CVPR 2025) | 167.03 | -0.0067 | 0.1365 | 0.7253 | 7.70 | 119.29 | 0.1462 | 16.74 | 0.0382 |
+| **PhysFlow (Ours)** | **113.15** | **0.0311** | **0.0805** | **0.6283** | **17.51** | **106.03** | **0.1641** | **19.62** | **0.0032** |
 
-\*Tikhonov back-projection enables face detection on only 1/45 portraits at $M=64$ due to binary speckle.
+\*TV-FISTA yields 0/479 face detections at $M=64$ and $M=256$. At $M=256$, PhysFlow beats LSI on AdaFace by `+12.2%` ($p = 0.0005$), FID by `-13.26`, NME106 by `-20.1%` ($p < 10^{-4}$), and PSNR by `+2.87 dB` ($p < 10^{-4}$), and transfers to standard 2D sequency-ordered Walsh-Hadamard `{0,1}` DMD masks (`19.97 dB` PSNR, `0.1168` AdaFace at $M=256$) with **zero generator retraining**.
 
 ### Installation
 
