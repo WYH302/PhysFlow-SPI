@@ -43,6 +43,10 @@ The framework combines three lightweight, physically grounded components:
 ### Installation
 
 ```bash
+# 0. Clone the repository
+git clone https://github.com/WYH302/PhysFlow-SPI.git
+cd PhysFlow-SPI
+
 # 1. Create a clean Python 3.12 virtual environment
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .\.venv\Scripts\activate
