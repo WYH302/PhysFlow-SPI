@@ -96,7 +96,7 @@ python scripts/run_journal_audit_extras.py
 @article{wu2026physflow,
   author  = {Wu, Yonghao},
   title   = {PhysFlow: Factorized Physics-Aware Pixel-Space Flow Matching for Extreme-Compression Single-Pixel Face Reconstruction},
-  journal = {Journal of Visual Communication and Image Representation},
+  journal = {Optics Communications},
   year    = {2026},
   note    = {Manuscript submitted for review}
 }
