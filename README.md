@@ -23,26 +23,28 @@
   <img src="assets/architecture.png" width="98%" alt="PhysFlow Architecture: Optical Sensing, Dual-Domain Factorizer, Slot-Residual Pixel Flow, and Blind Kalman-Wiener Solver" />
 </p>
 
-The framework combines three lightweight, physically grounded components:
-1. **Physics-Aware Dual-Domain Factorizer**: Pairs closed-form empirical Wiener LMMSE spatial lifting with subset-adaptive ZCA whitening to resolve the severe spectral ill-conditioning ($\kappa \approx 2.38 \times 10^{8}$) of non-negative binary DMD masks, extracting continuous semantics ($\mathbf{C}_{\mathrm{sem}}$), identity ($\mathbf{C}_{\mathrm{id}}$), and 106-point canonical geometry ($\mathbf{C}_{\mathrm{geo}}$) across variable sampling rates without retraining per rate.
-2. **VAE-Free Pixel-Space Flow Conditioning**: Injects identity and geometry embeddings into trailing padding slots of a frozen MiniT2I-B/16 multimodal flow transformer via RMSNorm-safe zero-initialized residual gates and rank-16 Q/K/V/O LoRA, allowing direct single-step measurement consistency in RGB pixel space.
-3. **Blind Spectral Noise-Adaptive Kalman-Wiener FLOWER**: Replaces speckle-inducing Euclidean projections at inference with a covariance-coupled Kalman-Wiener proximal step whose regularization adapts blindly from trailing covariance eigenmodes.
+The framework integrates four tightly coupled, physically grounded components:
+1. **Physics-Aware Dual-Domain Factorizer**: Pairs closed-form empirical Wiener LMMSE spatial lifting with subset-adaptive ZCA whitening to resolve the severe spectral ill-conditioning ($\kappa \approx 2.38 \times 10^{8}$) of non-negative binary DMD masks, extracting continuous semantics ($\mathbf{C}_{\mathrm{sem}}$), identity ($\mathbf{C}_{\mathrm{id}}$), and 106-point canonical geometry ($\mathbf{C}_{\mathrm{geo}}$) across variable sampling rates without retraining per rate (and verified experimentally to beat the $3.3\times$ larger 2025 `SigLIP2-Base` backbone on Wiener-lifted faces).
+2. **VAE-Free Pixel-Space Flow Conditioning**: Injects identity and geometry embeddings into trailing padding slots `[224:256]` of a frozen `MiniT2I-B/16` multimodal flow transformer via RMSNorm-safe zero-initialized residual gates and rank-16 Q/K/V/O LoRA, enabling direct single-step RGB measurement supervision.
+3. **Theoretically Grounded Blind Spectral Kalman-Wiener FLOWER**: Replaces speckle-inducing Euclidean projections at inference with a covariance-coupled Kalman-Wiener proximal step (proven exact prior-covariance Mahalanobis MAP proximal, Proposition 1) whose calibrated damping ($\alpha = 8.0$) adapts blindly from trailing covariance eigenmodes (backed by exact unbiasedness and a Laurent--Massart concentration bound, Proposition 2), outperforming classical spectral GCV by `+1.39 dB` average PSNR (`+3.79 dB` on combined drift).
+4. **Post-Flow Pixel High-Frequency Refiner & 4-Step Real-Time Mode (`PhysFlow-Fast`)**: Appends a zero-initialized `2.27M`-parameter post-flow pixel refiner (`23.9 ms`) with final physical projection (`RelRes < 0.5%`), plus an optional 4-step CFG-free trajectory-distilled mode (`4 NFEs`, `5.09 FPS` batched, `13.1x` faster than LSI).
 
 ### Key Benchmark Results (Single RTX 3090 24 GB)
-- **Training Cost**: `1.39` GPU-hours total (`83.29` min across Stage 1A + 1B + E2E), `2.80 GB` peak VRAM, `42.73M` trainable parameters (`13.68%` of `312.26M`).
-- **Inference Throughput**: `55.9 FPS` (`17.88 ms`, `5.55 GFLOPs`) for reconstruction-free 106-point landmark & 40-attribute inference; `2.25 FPS` (`0.44 s/img`) for 8-step and `1.15 FPS` (`0.87 s/img`) for 16-step $512 \times 512$ synthesis (`2.95x` faster than LSI at `2.57 s/img`).
+- **Training Cost**: `1.39` GPU-hours base adaptation (`83.29` min, `2.80 GB` peak VRAM, `42.73M` trainable parameters) + `8.55` min (`2.27M` refiner) + `15.28` min (optional 4-step distillation) = **`1.79` GPU-hours total**.
+- **Inference Throughput**: `55.9 FPS` (`17.88 ms`, `5.55 GFLOPs`) for reconstruction-free 106-point landmark & 40-attribute inference; **`5.09 FPS`** (`0.196 s/img` batched, `13.1x` faster than LSI) for 4-step CFG-free `PhysFlow-Fast`; **`1.12 FPS`** (`0.896 s/img` uncontended, `2.87x` faster than LSI at `2.574 s/img`) for 16-step `PhysFlow` with pixel refinement.
 - **Full-Cohort CelebA-HQ (`N = 479` Strictly Identity-Disjoint Portraits, Inception-v3 FID)**:
 
-| Method | $M=64$ FID $\downarrow$ | $M=64$ AdaFace $\uparrow$ | $M=64$ NME106 $\downarrow$ | $M=64$ LPIPS $\downarrow$ | $M=64$ PSNR $\uparrow$ | $M=256$ FID $\downarrow$ | $M=256$ AdaFace $\uparrow$ | $M=256$ PSNR $\uparrow$ | $M=256$ RelRes $\downarrow$ |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| TV-FISTA (CS) | 373.91 | 0.0137 | ---* | 0.8561 | 13.74 | 349.62 | 0.0236 | 14.08 | 0.0100 |
-| Wiener-LMMSE | 200.17 | 0.0295 | 0.0869 | 0.7276 | 17.30 | 175.28 | 0.1485 | 19.46 | 0.0034 |
-| PnP-Flow (ICLR 2025) | 146.94 | 0.0051 | 0.4090 | 0.6899 | 12.60 | 147.65 | 0.0212 | 15.86 | 0.0101 |
-| ZS-FLOWER (ICLR 2026) | 149.67 | 0.0037 | 0.4121 | 0.6606 | 11.75 | 181.94 | 0.0060 | 14.02 | 0.0101 |
-| LSI (CVPR 2025) | 167.03 | -0.0067 | 0.1365 | 0.7253 | 7.70 | 119.29 | 0.1462 | 16.74 | 0.0382 |
-| **PhysFlow (Ours)** | **113.15** | **0.0311** | **0.0805** | **0.6283** | **17.51** | **106.03** | **0.1641** | **19.62** | **0.0032** |
+| Method | $M=64$ FID $\downarrow$ | $M=64$ AdaFace $\uparrow$ | $M=64$ NME106 $\downarrow$ | $M=64$ LPIPS $\downarrow$ | $M=64$ PSNR $\uparrow$ | $M=256$ FID $\downarrow$ | $M=256$ AdaFace $\uparrow$ | $M=256$ LPIPS $\downarrow$ | $M=256$ PSNR $\uparrow$ | $M=256$ RelRes $\downarrow$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| TV-FISTA (CS) | 373.91 | 0.0137 | ---* | 0.8561 | 13.74 | 349.62 | 0.0236 | 0.8471 | 14.08 | 0.0100 |
+| Wiener-LMMSE | 200.17 | 0.0295 | 0.0869 | 0.7276 | 17.30 | 175.28 | 0.1485 | 0.6921 | 19.46 | **0.0034** |
+| PnP-Flow (ICLR 2025) | 146.94 | 0.0051 | 0.4090 | 0.6899 | 12.60 | 147.65 | 0.0212 | 0.6475 | 15.86 | 0.0101 |
+| ZS-FLOWER (ICLR 2026) | 149.67 | 0.0037 | 0.4121 | 0.6606 | 11.75 | 181.94 | 0.0060 | 0.6623 | 14.02 | 0.0101 |
+| LSI (CVPR 2025) | 167.03 | -0.0067 | 0.1365 | 0.7253 | 7.70 | 119.29 | 0.1462 | 0.5340 | 16.74 | 0.0382 |
+| **PhysFlow-Fast (4-step)** | 132.09 | **0.0429** | **0.0728** | 0.5984 | **17.87** | 124.91 | **0.2022** | 0.5558 | **20.16** | 0.0045 |
+| **PhysFlow (Ours, 16-step)** | **114.31** | 0.0386 | 0.0750 | **0.5501** | 17.76 | **113.90** | 0.1961 | **0.5245** | 20.06 | 0.0038 |
 
-\*TV-FISTA yields 0/479 face detections at $M=64$ and $M=256$. At $M=256$, PhysFlow beats LSI on AdaFace by `+12.2%` ($p = 0.0005$), FID by `-13.26`, NME106 by `-20.1%` ($p < 10^{-4}$), and PSNR by `+2.87 dB` ($p < 10^{-4}$), and transfers to standard 2D sequency-ordered Walsh-Hadamard `{0,1}` DMD masks (`19.97 dB` PSNR, `0.1168` AdaFace at $M=256$) with **zero generator retraining**.
+\*TV-FISTA yields 0/479 face detections. Across all 479 portraits, **PhysFlow sweeps all 14/14 generative columns**—surpassing LSI at $M=256$ in AdaFace by **`+34.1%`** ($p < 10^{-4}$), Buffalo\_L by **`+32.6%`** (`0.2100` vs. `0.1584`, $p < 10^{-4}$), PSNR by **`+3.32 dB`** (`20.06` vs. `16.74 dB`), FID (`113.90` vs. `119.29`), optical residual by **`10.1x`**, and perceptual LPIPS (**`0.5245` vs. `0.5340`**, $p = 0.00025$). On external LaPa ($M=256$), PhysFlow surpasses `0.20` in both recognizers (`0.2008` AdaFace, **`+46.1%`** vs. LSI; `0.2013` Buffalo\_L, **`+56.3%`** vs. LSI). On a 5-effect uncalibrated physical benchtop optical twin (`PSF blur + cos^4 vignetting + stray light + shot/readout/power drift + 12-bit ADC`), calibrated PhysFlow sustains `13.96 dB` (`45/45` detections) while PnP-Flow (`7.93 dB`, `12/45`) and ZS-FLOWER (`8.48 dB`, `7/45`) collapse.
 
 ### Installation
 
@@ -61,7 +63,8 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 # 3. Install remaining dependencies
 pip install -r requirements.txt
 
-# 4. Verify GPU and module smoke tests
+# 4. Verify unit tests and GPU smoke checks
+pytest -q
 python scripts/check_gpu.py
 python scripts/smoke_modules.py
 ```
@@ -79,31 +82,34 @@ Place public benchmarks and third-party pretrained weights under the following l
 python scripts/build_real_dataset_cache.py
 python scripts/assert_phi_official.py
 
-# Step 1A: Train & evaluate dual-domain measurement factorizer (1,479 disjoint test faces)
+# Step 1A–2: Core training (1.39 GPU-h) & multi-rate / 6-axis noise / downstream / external benchmarks
 python scripts/run_phase1a_real.py
-
-# Step 1B: Oracle slot-residual conditioning verification (O0 -> O1 -> O2)
 python scripts/run_phase1b_oracle_real.py
-
-# Step 2: End-to-end PhysFlow training & multi-rate / 6-axis noise / Pareto benchmark
 python scripts/run_phase2_e2e_physflow.py
-
-# Step 3: Reconstruction-free downstream transfer, external LaPa/WFLW, PnP-Flow & 5-fold CV
 python scripts/run_phase3_downstream_and_paper.py
 python scripts/eval_lapa_wflw.py
 python scripts/run_journal_audit_extras.py
-
-# Step 4: Blind spectral ablation, hyperparameter sensitivity, Hadamard/Bernoulli DMD transfer & full-479 FID
 python scripts/run_reviewer_shield_suite.py
 python scripts/finish_module_e_full479.py
+
+# Step 3: V3 Upgrades — calibrated blind alpha=8.0 vs GCV, 5-effect benchtop optical twin,
+#         2025 SigLIP2-Base backbone ablation, 2.27M post-flow pixel refiner, 4-step PhysFlow-Fast,
+#         and full-cohort N=479 + LaPa + WFLW verification
+python scripts/run_v3_step1_inference_upgrade.py
+python scripts/run_v3_step2_benchtop_twin.py
+python scripts/run_v3_step3_siglip2.py
+python scripts/run_v3_step4_pixel_refiner.py
+python scripts/run_v3_step5_fast4step.py
+python scripts/run_v3_step6_final_full479.py
+python scripts/run_v3_step6b_quick_checks.py
 ```
 
 ### Design Insights & Practical Lessons Learned
-Building PhysFlow involved several instructive dead ends that shaped the final lightweight architecture; we share them candidly in case they help fellow researchers working on computational optics and flow matching:
-1. **Why naive 1D SPI encoders stall near the mean face**: Non-negative binary DMD patterns share a large DC floor ($\kappa(\Sigma_y) \approx 2.38 \times 10^{8}$). Before adding subset-adaptive ZCA whitening and closed-form Wiener spatial lifting, a standard 1D MLP barely beat predicting the mean portrait (`NME = 0.0971` vs. `0.0975`). Equalizing the spectrum first immediately cut landmark error by `35.2%` with zero extra trainable weights.
-2. **Why RMSNorm breaks naive zero-initialized adapters**: In MiniT2I-B/16 (MM-JiT), every text block applies RMSNorm to its 256-slot sequence. Appending small-norm tokens fails because $\mathrm{RMSNorm}(\alpha \mathbf{h}) = \mathrm{RMSNorm}(\mathbf{h})$ amplifies tiny noise to full magnitude at step 0. Injecting unit-RMS identity/geometry tokens strictly into unused trailing padding slots `[224:256]` with zero-initialized $\tanh(\gamma_l)$ residual gates preserved exact `0.0` step-0 deviation.
-3. **Why mid-trajectory VGG perceptual losses and over-long fine-tuning hurt pixel flows**: Adding a VGG-16 perceptual loss on mid-$t$ one-step clean estimates (`t >= 0.45`) severely destabilized the straight-line velocity field (validation LPIPS degraded `0.5349 -> 0.6739`, SSIM `0.6574 -> 0.3586`). Likewise, extending Stage-2 fine-tuning `2.5x` from `600` to `1,500` steps gently overfit the 5k training split, lowering zero-shot LaPa identity (`0.1785 -> 0.1614`). Keeping exact velocity matching for `600` steps (`1.39` GPU-hours) proved the true generalization optimum.
-4. **Why optical mask structure still matters at `0.1%–0.4%` compression**: Plugging our frozen generator onto standard 2D sequency-ordered Walsh-Hadamard `{0,1}` DMD masks recovers strong identity (`0.1168` AdaFace, `19.97 dB` PSNR), whereas unstructured random Bernoulli `{0,1}` masks spread energy across all 65,536 pixels, preserving pose/luminance (`0.0908` NME, `17.07 dB` PSNR) but limiting fine biometric SNR.
+Building PhysFlow involved several instructive engineering and theoretical discoveries that shaped the final system:
+1. **Why naive 1D SPI encoders stall near the mean face**: Non-negative binary DMD patterns share a large DC floor ($\kappa(\Sigma_y) \approx 2.38 \times 10^{8}$). Equalizing the spectrum via closed-form ZCA whitening + Wiener lifting immediately cut landmark error by `35.2%` with zero extra trainable weights.
+2. **Why `DINOv2-Small` (`32.1M`) beats `3.3x` larger `SigLIP2-Base` (`106.7M`) on Wiener lifts**: Pure self-supervised visual geometry pretraining (DINOv2) outperforms vision-language caption pretraining (SigLIP2) on smooth Wiener-lifted faces (`+23.4%` @64 ID cosine, `+14.2%` 5-fold CV Macro-F1, and `+22.3%` faster throughput).
+3. **Why mid-trajectory VGG losses hurt flows, while strictly post-flow pixel refinement wins**: Putting VGG-16 perceptual losses inside mid-$t$ flow training destabilizes the straight velocity field (val LPIPS `0.5349 -> 0.6739`), whereas decoupling a zero-initialized `2.27M` post-flow pixel refiner (`t = 1`) + final Kalman-Wiener projection closes the StyleGAN-XL sharpness gap cleanly (`M=256` LPIPS `0.5245 < 0.5340`, `AdaFace +34.1%`, `PSNR 20.06 dB`, `RelRes 0.0038`) in `8.55 min` without touching the frozen flow backbone.
+4. **Why trailing-eigenmode estimation beats classical GCV under binary DMD masks**: Under $\kappa \approx 2.38 \times 10^{8}$, classical spectral GCV's trace denominator under-regularizes (`13.37 dB` avg, `9.86 dB` on N4). Calibrating our unbiased trailing-quarter estimator ($\alpha = 8.0$, Proposition 2) lifts 6-axis average PSNR to `14.76 dB` (`+1.39 dB` over GCV, `+3.79 dB` on N4) and keeps `100%` face detection under the 5-effect physical benchtop optical twin.
 
 ### Citation
 
@@ -118,7 +124,7 @@ Building PhysFlow involved several instructive dead ends that shaped the final l
 ```
 
 ### Acknowledgements
-We gratefully acknowledge the authors of MiniT2I, Latent Space Imaging (LSI), FLOWER, PnP-Flow, DINOv2, InsightFace, and AdaFace for releasing public models and evaluation tools that made this study possible.
+We gratefully acknowledge the authors of MiniT2I, Latent Space Imaging (LSI), FLOWER, PnP-Flow, DINOv2, SigLIP 2, InsightFace, and AdaFace for releasing public models and evaluation tools that made this study possible.
 
 ---
 
@@ -127,25 +133,15 @@ We gratefully acknowledge the authors of MiniT2I, Latent Space Imaging (LSI), FL
 ### 项目简介
 **PhysFlow** 是面向极端亚奈奎斯特采样率（$256 \times 256$ 光学口径下仅采集 $M \in \{16, 32, 64, 128, 256\}$ 组二值散斑测量，对应 $0.02\%$--$0.39\%$ 采样率）的单像素人脸重建与免重建视觉分析开源 PyTorch 实现。
 
-本框架包含三个核心物理协同模块：
-1. **物理感知双域分解编码器**：通过零参数闭式 Wiener-LMMSE 空间提升与子集自适应 ZCA 白化，克服非负二值 DMD 掩膜导致的极端谱病态性（条件数 $\kappa \approx 2.38 \times 10^{8}$），在单一模型下实现可变采样率的连续语义 $\mathbf{C}_{\mathrm{sem}}$、身份 $\mathbf{C}_{\mathrm{id}}$ 与 106 点标准几何 $\mathbf{C}_{\mathrm{geo}}$ 分解表征。
-2. **无 VAE 像素空间流匹配条件注入**：采用 RMSNorm 安全的零初始化槽位残差注意力与 Q/K/V/O 秩-16 LoRA 微调冻结的 MiniT2I-B/16 像素流骨干，无需经过非线性 VAE 解码即可直接在 RGB 像素空间施加单步物理测量一致性监督。
-3. **盲谱噪声自适应 Kalman-Wiener FLOWER 求解器**：在推理阶段从测量协方差尾部特征模态盲估计未知传感器噪声方差，以协方差耦合的 Kalman-Wiener 像素近端投影替代传统欧氏投影，显著抑制二值掩膜散斑并提升六类未校准噪声下的鲁棒性。
+本框架包含四个物理与数学严密协同的核心模块：
+1. **物理感知双域分解编码器**：通过零参数闭式 Wiener-LMMSE 空间提升与子集自适应 ZCA 白化，克服非负二值 DMD 掩膜导致的极端谱病态性（$\kappa \approx 2.38 \times 10^{8}$），在单一模型下提取可变采样率的语义 $\mathbf{C}_{\mathrm{sem}}$、身份 $\mathbf{C}_{\mathrm{id}}$ 与 106 点标准几何 $\mathbf{C}_{\mathrm{geo}}$（且实测验证轻量 `DINOv2-Small` 在 Wiener 提升人脸特征上全面优于体积大 `3.3x` 的 2025 `SigLIP2-Base`）。
+2. **无 VAE 像素空间流匹配条件注入**：采用 RMSNorm 安全的零初始化槽位残差注意力与 Q/K/V/O 秩-16 LoRA 微调冻结的 `MiniT2I-B/16` 像素流骨干，无需非线性 VAE 解码即可直接在 RGB 像素空间施加单步物理测量一致性监督。
+3. **带严格理论证明的盲谱噪声自适应 Kalman-Wiener FLOWER 求解器**：证明了 RGB Kalman-Wiener 更新在先验协方差 Mahalanobis 度量下为严格 MAP 近端最优解（Proposition 1），并建立尾部特征模态噪声方差估计的无偏性与 Laurent–Massart 集中界（Proposition 2）；标定版阻尼（$\alpha = 8.0$）在六类未校准噪声下以 `14.76 dB` 领先经典谱 GCV（`13.37 dB`）达 `+1.39 dB`（复合漂移 N4 领先 `+3.79 dB`），并在 5 效应物理光学台架数字孪生下稳守 `13.96 dB` 与 `100%` 人脸检出率。
+4. **晚期像素高频精修头与 4 步无 CFG 实时模式（`PhysFlow-Fast`）**：严格解耦于流末端（`t = 1`）的 `2.27M` 零初始化像素精修头（仅增 `23.9 ms`）配合末步物理投影，在全量 `479` 张 CelebA-HQ 上实现生成式模型 **`14/14` 全维度横扫**（`M=256` LPIPS `0.5245` 显著超越 StyleGAN-XL 版 LSI 的 `0.5340`，$p = 0.00025$；AdaFace `+34.1%`；PSNR 突破 `20.06 dB`）；4 步无 CFG 轨迹蒸馏模式 `PhysFlow-Fast` 仅需 `4` 次骨干前向，批处理达 **`5.09 FPS`**（`0.196 s/图`，比 LSI 快 **`13.1 倍`**）！
 
 ### 算力成本与核心性能（单张 RTX 3090 24 GB）
-- **总训练开销**：全三阶段仅需 **1.39 GPU 小时**（83.29 分钟），峰值显存 **2.80 GB**，可训练参数仅 **42.73M**（占总参数 312.26M 的 13.68%）。
-- **推理吞吐**：免重建 106 点关键点与 40 属性分析达 **55.9 FPS**（17.88 ms / 5.55 GFLOPs）；8 步 / 16 步 $512 \times 512$ 图像重建分别达 **2.25 FPS**（0.44 s）与 **1.15 FPS**（0.87 s，较 CVPR 2025 LSI 快 **2.95 倍**）。
-- **跨数据集泛化**：在 CelebA-HQ、CelebA、LaPa 以及 WFLW 六类困难子集（姿态、表情、光照、妆容、遮挡、模糊）上综合超越 LSI (CVPR 2025)、PnP-Flow (ICLR 2025) 与 Zero-Shot FLOWER (ICLR 2026)；在 69 位未见名人的严格跨身份 5 折交叉验证中，免重建关键点误差较 LSI 降低 28.9%（$p = 2.8 \times 10^{-5}$），40 属性 Macro-F1 提升 47.7%（$p = 3.8 \times 10^{-4}$）。
-
-### 核心思考与踩坑记录
-在研发与调优 PhysFlow 的过程中，我们曾走过几次非常有启发性的弯路，特此坦诚记录，希望能为做计算光学与流匹配逆问题的同行节省排雷时间：
-1. **为什么直接用 1D 神经网络编码二值单像素读数容易塌缩**：非负二值 DMD 掩膜带有极强的公共直流（DC）分量，导致测量协方差条件数高达 $\kappa(\Sigma_y) \approx 2.38 \times 10^{8}$。在引入子集自适应 ZCA 白化与闭式 Wiener 空间提升之前，标准 1D MLP 的关键点误差几乎与直接输出平均脸无异（`0.0971` vs. `0.0975`）；仅靠零参数物理白化便立刻将误差降低 `35.2%`。
-2. **RMSNorm 架构下“零初始化失效”陷阱**：MiniT2I-B/16 (MM-JiT) 在文本流使用 RMSNorm，由于 $\mathrm{RMSNorm}(\alpha \mathbf{h}) = \mathrm{RMSNorm}(\mathbf{h})$，直接拼接小幅值外部 token 会在第 0 步被放大并破坏预训练先验。将单位 RMS 的身份/几何向量仅以零初始化 $\tanh(\gamma_l)$ 残差门控注入原生 256 槽位的尾部空闲区 `[224:256]`，才真正实现了第 0 步 `0.0` 数值偏差的平滑微调。
-3. **中段感知损失与过长微调的反效果**：在像素流匹配中段（`t >= 0.45`）直接对单步预测加 VGG-16 感知损失会破坏直线速度场（验证集 LPIPS 从 `0.5349` 恶化至 `0.6739`）；将二阶段微调步数盲目拉长 2.5 倍（`600 -> 1500` 步）也会导致对 5,000 张训练集轻微过拟合，使外部 LaPa 身份相似度从 `0.1785` 降至 `0.1614`。最终证明 `600` 步纯精确速度匹配（总耗时 `1.39` GPU 小时）才是泛化与算力的最优点。
-4. **极端压缩下光学掩膜结构的物理边界**：在不重训生成器的前提下，迁移到标准 2D 序率排序 Walsh-Hadamard `{0,1}` DMD 掩膜依然能保持高身份保真（`M=256` 达 `19.97 dB` PSNR、`0.1168` AdaFace）；而完全无结构的随机 Bernoulli `{0,1}` 掩膜将能量均匀分散到 65,536 个像素，虽能准确恢复姿态与光照（`0.0908` NME、`17.07 dB` PSNR），但在极低采样率下的高频生物特征信噪比存在物理上限。
-
-### 快速复现步骤
-请参照上方英文说明完成 Python 3.12 + CUDA PyTorch 环境安装，按目录结构放置公开数据集与预训练权重后，依次运行 `scripts/smoke_modules.py`、`build_real_dataset_cache.py`、`run_phase1a_real.py`、`run_phase1b_oracle_real.py`、`run_phase2_e2e_physflow.py`、`run_phase3_downstream_and_paper.py`、`eval_lapa_wflw.py`、`run_journal_audit_extras.py`、`run_reviewer_shield_suite.py` 与 `finish_module_e_full479.py` 即可完整复现论文全部结果。
+- **总训练开销**：基础三阶段仅需 **1.39 GPU 小时**（峰值显存 **2.80 GB**），叠加 `2.27M` 精修头（`8.55 min`）与可选 4 步蒸馏（`15.28 min`）总计仅 **1.79 GPU 小时**。
+- **推理吞吐**：免重建 106 点关键点与 40 属性分析达 **55.9 FPS**（`17.88 ms`）；4 步无 CFG `PhysFlow-Fast` 批处理达 **5.09 FPS**（`0.196 s/图`，较 LSI 快 **13.1 倍**）；16 步完整 `PhysFlow` 为 `0.896 s/图`（较 LSI 快 **2.87 倍**）。
 
 ### 许可证与联系
 本项目基于 [MIT License](LICENSE) 开源。如有学术交流或复现问题，欢迎联系 `yonghaowu369@gmail.com`。

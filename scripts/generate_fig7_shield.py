@@ -16,11 +16,13 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_FIG = ROOT.parent / "paper" / "figures" / "fig7_shield_ablations.pdf"
-PREVIEW_PNG = ROOT / outputs / fig7_preview.png
+PREVIEW_PNG = ROOT / "outputs" / "fig7_preview.png"
 
 
 def main() -> None:
     d = json.loads((ROOT / "outputs" / "reviewer_shield_results.json").read_text(encoding="utf-8"))
+    v3_s1 = json.loads((ROOT / "outputs" / "v3_surgery" / "step1_inference_upgrade.json").read_text(encoding="utf-8"))
+    v3_s6 = json.loads((ROOT / "outputs" / "v3_surgery" / "step6_final_full479_v3.json").read_text(encoding="utf-8"))
     ma = d["module_a_blind_spectral_ablation"]
     mb = d["module_b_sensitivity_and_uncertainty"]
     md = d["module_d_hardware_masks"]
@@ -57,22 +59,24 @@ def main() -> None:
     fig, axes = plt.subplots(1, 3, figsize=(11.6, 3.30), gridspec_kw={"width_ratios": [1.22, 1.0, 1.15], "wspace": 0.44})
 
     # ------------------------------------------------------------------
-    # (a) Blind Spectral Estimator Ablation + lambda_adapt Telemetry
+    # (a) Blind Spectral Estimator Ablation (incl. Pure GCV & Calibrated alpha=8.0) + lambda_adapt Telemetry
     # ------------------------------------------------------------------
     ax = axes[0]
     modes = ["clean", "gaussian", "poisson_gaussian", "gain_bias", "dropout", "combined"]
     xlabels = ["Clean\n(N0)", "Gauss\n(N1)", "Pois+G\n(N2)", "Gain+\nBias", "Drop\n(N3b)", "Comb.\n(N4)"]
     x = np.arange(len(modes))
-    w = 0.255
+    w = 0.195
 
     p_fix_s = [ma["variants"]["fixed_small_4e4"][m]["psnr_mean"] for m in modes]
     p_fix_l = [ma["variants"]["fixed_large_5e2"][m]["psnr_mean"] for m in modes]
-    p_blind = [ma["variants"]["blind_adaptive_ours"][m]["psnr_mean"] for m in modes]
-    lams = [ma["lambda_telemetry"][m]["mean"] for m in modes]
+    p_gcv = [v3_s1["part1c_hq45_noise_and_cb45"]["hq45_noise"]["pure_gcv_t0.35"][m]["psnr_mean"] for m in modes]
+    p_blind = [v3_s1["part1c_hq45_noise_and_cb45"]["hq45_noise"]["tail_8.0_t0.35"][m]["psnr_mean"] for m in modes]
+    lams = [v3_s1["part1c_hq45_noise_and_cb45"]["hq45_noise"]["tail_8.0_t0.35"][m]["lam_mean"] for m in modes]
 
-    ax.bar(x - w, p_fix_s, width=w, color=C_RED, edgecolor="white", linewidth=0.4, label=r"Fixed $\lambda=4{\times}10^{-4}$")
-    ax.bar(x, p_fix_l, width=w, color=C_GREEN, edgecolor="white", linewidth=0.4, label=r"Fixed $\lambda=0.05$")
-    ax.bar(x + w, p_blind, width=w, color=C_PHYS, edgecolor="white", linewidth=0.4, label=r"Blind $\hat{\lambda}_{\mathrm{adapt}}$ (Ours)")
+    ax.bar(x - 1.5 * w, p_fix_s, width=w, color=C_RED, edgecolor="white", linewidth=0.35, label=r"Fixed $\lambda=4{\times}10^{-4}$")
+    ax.bar(x - 0.5 * w, p_gcv, width=w, color=C_PURP, edgecolor="white", linewidth=0.35, label="Pure Spectral GCV")
+    ax.bar(x + 0.5 * w, p_fix_l, width=w, color=C_GREEN, edgecolor="white", linewidth=0.35, label=r"Fixed $\lambda=0.05$")
+    ax.bar(x + 1.5 * w, p_blind, width=w, color=C_PHYS, edgecolor="white", linewidth=0.35, label="Calib. " + r"$\hat{\lambda}_{\mathrm{adapt}}$ (Ours)")
 
     ax.set_xticks(x)
     ax.set_xticklabels(xlabels)
@@ -84,16 +88,16 @@ def main() -> None:
     ax2 = ax.twinx()
     ax2.plot(x, lams, color=C_ORG, marker="D", markersize=4.4, linewidth=1.55, linestyle="-", label=r"Est. $\hat{\lambda}_{\mathrm{adapt}}$ (right, log)")
     ax2.set_yscale("log")
-    ax2.set_ylim(1.5e-4, 0.7)
+    ax2.set_ylim(1.5e-4, 1.2)
     ax2.set_ylabel(r"Estimated $\hat{\lambda}_{\mathrm{adapt}}$ (log scale)", color="#000000")
     ax2.tick_params(axis="y", colors="#000000")
     ax2.spines["top"].set_visible(False)
 
-    # Annotate 258x automatic jump on Gain+Bias
+    # Annotate 595x automatic jump on Gain+Bias
     ax2.annotate(
-        r"$258{\times}$",
+        r"$595{\times}$",
         xy=(3, lams[3]),
-        xytext=(2.35, 0.27),
+        xytext=(2.10, 0.52),
         fontsize=7.2,
         fontweight="bold",
         color="#000000",
@@ -102,7 +106,7 @@ def main() -> None:
 
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1 + h2, l1 + l2, loc="upper center", bbox_to_anchor=(0.48, 1.24), ncol=2, frameon=False, columnspacing=0.9, handlelength=1.4)
+    ax.legend(h1 + h2, l1 + l2, loc="upper center", bbox_to_anchor=(0.48, 1.30), ncol=2, frameon=False, fontsize=6.6, columnspacing=0.65, handlelength=1.2)
     ax.text(0.5, -0.32, "(a) Blind Spectral Estimator Ablation (M = 64)", transform=ax.transAxes, ha="center", va="top", fontweight="bold", fontsize=8.4, color="#000000")
 
     # ------------------------------------------------------------------
@@ -153,7 +157,7 @@ def main() -> None:
     zs_p = [me["rates"]["256"]["zs_flower"]["psnr_mean"], md["hadamard_dmd_01"]["methods"]["zs_flower"]["256"]["psnr_mean"], md["bernoulli_dmd_01"]["methods"]["zs_flower"]["256"]["psnr_mean"]]
     pn_p = [me["rates"]["256"]["pnp_flow"]["psnr_mean"], md["hadamard_dmd_01"]["methods"]["pnp_flow"]["256"]["psnr_mean"], md["bernoulli_dmd_01"]["methods"]["pnp_flow"]["256"]["psnr_mean"]]
     wn_p = [me["rates"]["256"]["wiener_lmmse"]["psnr_mean"], md["hadamard_dmd_01"]["methods"]["wiener_lmmse"]["256"]["psnr_mean"], md["bernoulli_dmd_01"]["methods"]["wiener_lmmse"]["256"]["psnr_mean"]]
-    pf_p = [me["rates"]["256"]["physflow"]["psnr_mean"], md["hadamard_dmd_01"]["methods"]["physflow_zero_gen_retrain"]["256"]["psnr_mean"], md["bernoulli_dmd_01"]["methods"]["physflow_zero_gen_retrain"]["256"]["psnr_mean"]]
+    pf_p = [v3_s6["full479"]["256"]["physflow_v3_16step"]["psnr_mean"], md["hadamard_dmd_01"]["methods"]["physflow_zero_gen_retrain"]["256"]["psnr_mean"], md["bernoulli_dmd_01"]["methods"]["physflow_zero_gen_retrain"]["256"]["psnr_mean"]]
 
     ax.bar(xm - 2 * wm, tv_p, width=wm, color=C_GRAY, edgecolor="white", linewidth=0.35, label="TV-FISTA")
     ax.bar(xm - 1 * wm, zs_p, width=wm, color=C_GREEN, edgecolor="white", linewidth=0.35, label="ZS-FLOWER")

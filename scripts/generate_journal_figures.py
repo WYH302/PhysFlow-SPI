@@ -223,11 +223,10 @@ def make_fig1_teaser(p2: dict, extras: dict) -> None:
         ax.text(0.5, -0.34, subcap, transform=ax.transAxes, ha="center", va="top", fontsize=9.0, fontweight="bold", color="#000000")
 
     fig.savefig(FIG_DIR / "fig1_teaser_comparison.pdf", bbox_inches="tight")
-    fig.savefig(FIG_DIR / "fig1_teaser_comparison.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
-def make_fig3_rate_and_noise(p2: dict, extras: dict, shield: dict) -> None:
+def make_fig3_rate_and_noise(p2: dict, extras: dict, shield: dict, v3_s1: dict) -> None:
     """Fig. 3: Rate-distortion curves (with PnP-Flow, Tikhonov, Wiener, ZS-FLOWER, LSI, PhysFlow) + 6-axis noise."""
     rates = [16, 32, 64, 128, 256]
     sr_labels = [f"{r}\n({100*r/65536:.2f}%)" for r in rates]
@@ -277,13 +276,13 @@ def make_fig3_rate_and_noise(p2: dict, extras: dict, shield: dict) -> None:
     fig.legend(handles_ab, labels_ab, loc="upper center", bbox_to_anchor=(0.37, 1.01),
                ncol=4, frameon=False, fontsize=7.8, columnspacing=1.0, handlelength=2.1)
 
-    # Panel (c): Six-Axis Sensor Noise Robustness at M=64 (bit-exact CPU seed=777 parity matching Tables 5 & 6)
+    # Panel (c): Six-Axis Sensor Noise Robustness at M=64 (calibrated alpha=8.0, CPU seed=777 parity matching Tables 5 & 6)
     n_keys = ["clean", "gaussian", "poisson_gaussian", "gain_bias", "dropout", "combined"]
     n_lbl = ["Clean\n(N0)", "Gauss\n(N1)", "Pois+G\n(N2)", "Gain+B\n(N3)", "Drop\n(N3b)", "Comb.\n(N4)"]
     xn = np.arange(len(n_keys))
     w = 0.25
     zs_noise = shield["module_c_baseline_parity"]["noise_m64"]["zs_flower"]
-    pf_noise = shield["module_a_blind_spectral_ablation"]["variants"]["blind_adaptive_ours"]
+    pf_noise = v3_s1["part1c_hq45_noise_and_cb45"]["hq45_noise"]["tail_8.0_t0.35"]
     axes[2].bar(xn - w, [zs_noise[k]["psnr_mean"] for k in n_keys],
                 width=w, color=PALETTE["zs_flower"], edgecolor="#222222", linewidth=0.4, label="ZS-FLOWER", zorder=3)
     axes[2].bar(xn, [p2["noise_m64"]["lsi"][k]["psnr_mean"] for k in n_keys],
@@ -300,11 +299,10 @@ def make_fig3_rate_and_noise(p2: dict, extras: dict, shield: dict) -> None:
                  ha="center", va="top", fontsize=9.0, fontweight="bold", color="#000000")
 
     fig.savefig(FIG_DIR / "fig3_rate_and_noise.pdf", bbox_inches="tight")
-    fig.savefig(FIG_DIR / "fig3_rate_and_noise.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
-def make_fig4_wflw_external(p3_ext: dict) -> None:
+def make_fig4_wflw_external(p3_ext: dict, v3_s6: dict) -> None:
     """Fig. 4: External WFLW 6-subset qualitative strip (footer-free) + dual NME/PSNR charts."""
     wflw = slice_grid_clean(OUTPUTS / "external_wflw_6subsets_m64.png", nrow=6, ncol=8)
     # Build clean 3-row x 8-col layout (2 subsets side-by-side per row: Pose|Expr, Illum|Makeup, Occl|Blur)
@@ -378,8 +376,12 @@ def make_fig4_wflw_external(p3_ext: dict) -> None:
     ax_nme = fig.add_subplot(gs[1, 0])
     ax_psnr = fig.add_subplot(gs[1, 1])
     for off, (mk, col, lbl) in zip((-1.5 * w, -0.5 * w, 0.5 * w, 1.5 * w), methods_w):
-        v_nme = [p3_ext["wflw_6subsets"][sb]["rates"][mk]["64"]["nme106_mean"] for sb in subs]
-        v_psnr = [p3_ext["wflw_6subsets"][sb]["rates"][mk]["64"]["psnr_mean"] for sb in subs]
+        if mk == "b3_physflow":
+            v_nme = [v3_s6["wflw72_m64"][sb]["nme106_mean"] for sb in subs]
+            v_psnr = [v3_s6["wflw72_m64"][sb]["psnr_mean"] for sb in subs]
+        else:
+            v_nme = [p3_ext["wflw_6subsets"][sb]["rates"][mk]["64"]["nme106_mean"] for sb in subs]
+            v_psnr = [p3_ext["wflw_6subsets"][sb]["rates"][mk]["64"]["psnr_mean"] for sb in subs]
         ax_nme.bar(xs + off, v_nme, width=w, color=col, edgecolor="#222222", linewidth=0.4, label=lbl, zorder=3)
         ax_psnr.bar(xs + off, v_psnr, width=w, color=col, edgecolor="#222222", linewidth=0.4, label=lbl, zorder=3)
 
@@ -402,11 +404,10 @@ def make_fig4_wflw_external(p3_ext: dict) -> None:
                ncol=4, frameon=False, fontsize=8.4, columnspacing=1.4)
 
     fig.savefig(FIG_DIR / "fig4_wflw_external.pdf", bbox_inches="tight")
-    fig.savefig(FIG_DIR / "fig4_wflw_external.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
-def make_fig5_downstream_pareto(p2: dict, p3_down: dict, extras: dict) -> None:
+def make_fig5_downstream_pareto(p2: dict, p3_down: dict, extras: dict, v3_s6: dict, v3_s6b: dict) -> None:
     """Fig. 5: Reconstruction-free downstream transfer (few-shot + 5-fold CV) + Speed-Quality Pareto."""
     fracs = ["1pct", "5pct", "10pct", "100pct"]
     xf = np.arange(len(fracs))
@@ -460,11 +461,19 @@ def make_fig5_downstream_pareto(p2: dict, p3_down: dict, extras: dict) -> None:
     fig.legend(handles_d, labels_d, loc="upper center", bbox_to_anchor=(0.35, 0.99),
                ncol=4, frameon=False, fontsize=7.9, columnspacing=1.0)
 
-    # Panel (c): Speed-Quality Pareto
+    # Panel (c): Speed-Quality Pareto (Base Euler 8..50 steps + V3 16-st + Refiner + Fast-4 Distilled + Refiner)
     steps_list = sorted(int(k) for k in p2["pareto_m64"].keys())
     secs = [p2["pareto_m64"][str(s)]["sec_per_img"] for s in steps_list]
     adas = [p2["pareto_m64"][str(s)]["adaface_cos_mean"] for s in steps_list]
     lpips_l = [p2["pareto_m64"][str(s)]["lpips_mean"] for s in steps_list]
+
+    v3_sec = 0.896  # 0.872s 16-step flow + 0.024s 2.27M pixel refiner (uncontended RTX 3090)
+    v3_ada = v3_s6b["v3_16step_proj075"]["hq45"]["64"]["adaface_cos_mean"]
+    v3_lp = v3_s6b["v3_16step_proj075"]["hq45"]["64"]["lpips_mean"]
+
+    f4_sec = v3_s6["timings"]["physflow_fast4_plus_refiner_bs9_sec"]  # 0.1963s (5.09 FPS batched)
+    f4_ada = v3_s6b["fast4_proj075"]["hq45"]["64"]["adaface_cos_mean"]
+    f4_lp = v3_s6b["fast4_proj075"]["hq45"]["64"]["lpips_mean"]
 
     ax_p = axes[2]
     ax_p2 = ax_p.twinx()
@@ -473,37 +482,46 @@ def make_fig5_downstream_pareto(p2: dict, p3_down: dict, extras: dict) -> None:
     ax_p2.spines["right"].set_color("#000000")
     ax_p2.spines["right"].set_linewidth(0.8)
 
-    l1 = ax_p.plot(secs, adas, "o-", color=PALETTE["physflow"], linewidth=2.2, markersize=5.5, label="AdaFace Cosine (left) ↑", zorder=4)
-    l2 = ax_p2.plot(secs, lpips_l, "s--", color=PALETTE["pnp_flow"], linewidth=1.9, markersize=5.0, label="LPIPS (right) ↓", zorder=3)
+    l1 = ax_p.plot(secs, adas, "o-", color=PALETTE["b2_geo"], linewidth=1.6, markersize=4.5, alpha=0.85, label="Base Flow AdaFace ↑", zorder=3)
+    l2 = ax_p2.plot(secs, lpips_l, "s--", color=PALETTE["pnp_flow"], linewidth=1.6, markersize=4.3, alpha=0.85, label="Base Flow LPIPS ↓", zorder=3)
 
-    # Highlight 16-step default elbow and LSI latency reference line
+    # Upgraded + Refiner hero operating points (Fast-4 & Full-16)
+    l3 = ax_p.plot([f4_sec, v3_sec], [f4_ada, v3_ada], "*-", color=PALETTE["physflow"], linewidth=2.2, markersize=8.5, label="+Refiner AdaFace ↑", zorder=6)
+    l4 = ax_p2.plot([f4_sec, v3_sec], [f4_lp, v3_lp], "D--", color=PALETTE["zs_flower"], linewidth=1.8, markersize=5.2, label="+Refiner LPIPS ↓", zorder=5)
+
+    # Highlight LSI latency reference line
     ax_p.axvline(p2["timings_sec_per_img_m64"]["lsi"], color=PALETTE["lsi"], linestyle=":", linewidth=1.1, zorder=2)
-    ax_p.text(p2["timings_sec_per_img_m64"]["lsi"] - 0.06, 0.0329, "LSI\n(2.57s)", ha="right", va="top",
+    ax_p.text(p2["timings_sec_per_img_m64"]["lsi"] - 0.06, 0.0525, "LSI\n(2.57s)", ha="right", va="top",
               fontsize=7.3, color="#000000", fontweight="bold")
 
-    offsets = {8: (15, 6), 16: (14, 8), 32: (0, 8), 50: (-4, 11)}
+    ax_p.annotate("Fast-4\n(0.20s)", (f4_sec, f4_ada), textcoords="offset points", xytext=(16, -24),
+                  ha="center", fontsize=7.2, fontweight="bold", color="#000000")
+    ax_p.annotate("Full-16\n(0.90s)", (v3_sec, v3_ada), textcoords="offset points", xytext=(20, -4),
+                  ha="left", fontsize=7.2, fontweight="bold", color="#000000")
     for st, ts, av in zip(steps_list, secs, adas):
-        ox, oy = offsets[st]
-        ax_p.annotate(f"{st} st", (ts, av), textcoords="offset points", xytext=(ox, oy),
-                      ha="center", fontsize=7.6, fontweight="bold", color="#000000")
+        if st == 8:
+            ax_p.annotate("8st", (ts, av), textcoords="offset points", xytext=(-6, -13), ha="center", fontsize=6.9, color="#000000")
+        elif st == 16:
+            ax_p.annotate("16st", (ts, av), textcoords="offset points", xytext=(16, 6), ha="center", fontsize=6.9, color="#000000")
+        elif st == 50:
+            ax_p.annotate("50st", (ts, av), textcoords="offset points", xytext=(0, -12), ha="center", fontsize=6.9, color="#000000")
 
-    ax_p.set_xlim(0.20, 3.00)
-    ax_p.set_ylim(0.0255, 0.0338)
-    ax_p2.set_ylim(0.629, 0.646)
+    ax_p.set_xlim(0.0, 2.95)
+    ax_p.set_ylim(0.022, 0.0555)
+    ax_p2.set_ylim(0.535, 0.665)
     ax_p.set_xlabel("Latency / 512px Image (s, RTX 3090)", fontsize=8.4, color="#000000")
     ax_p.set_ylabel("AdaFace Cosine ↑", fontsize=8.5, color="#000000")
     ax_p2.set_ylabel("Perceptual LPIPS ↓", fontsize=8.5, color="#000000")
     ax_p.tick_params(axis="y", colors="#000000")
     ax_p2.tick_params(axis="y", colors="#000000")
     ax_p.grid(True, zorder=0)
-    lines_all = l1 + l2
-    ax_p.legend(lines_all, [ln.get_label() for ln in lines_all], loc="upper center", bbox_to_anchor=(0.5, 1.24),
-                ncol=2, frameon=False, fontsize=7.3, columnspacing=0.6)
+    lines_all = l1 + l2 + l3 + l4
+    ax_p.legend(lines_all, [ln.get_label() for ln in lines_all], loc="upper center", bbox_to_anchor=(0.48, 1.30),
+                ncol=2, frameon=False, fontsize=6.7, columnspacing=0.65, handlelength=1.5)
     ax_p.text(0.5, -0.35, "(c) Speed–Quality Pareto (M = 64)", transform=ax_p.transAxes,
               ha="center", va="top", fontsize=9.0, fontweight="bold", color="#000000")
 
     fig.savefig(FIG_DIR / "fig5_downstream_pareto.pdf", bbox_inches="tight")
-    fig.savefig(FIG_DIR / "fig5_downstream_pareto.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -547,7 +565,6 @@ def make_fig6_m256_and_failures() -> None:
               ha="center", va="top", fontsize=9.2, fontweight="bold", color="#000000")
 
     fig.savefig(FIG_DIR / "fig6_m256_and_failures.pdf", bbox_inches="tight")
-    fig.savefig(FIG_DIR / "fig6_m256_and_failures.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -559,11 +576,14 @@ def main() -> None:
     p3_ext = load_json(OUTPUTS / "phase3_external_lapa_wflw.json")
     extras = load_json(OUTPUTS / "journal_audit_extras.json")
     shield = load_json(OUTPUTS / "reviewer_shield_results.json")
+    v3_s1 = load_json(OUTPUTS / "v3_surgery" / "step1_inference_upgrade.json")
+    v3_s6 = load_json(OUTPUTS / "v3_surgery" / "step6_final_full479_v3.json")
+    v3_s6b = load_json(OUTPUTS / "v3_surgery" / "step6b_parity_and_qa.json")
 
     make_fig1_teaser(p2, extras)
-    make_fig3_rate_and_noise(p2, extras, shield)
-    make_fig4_wflw_external(p3_ext)
-    make_fig5_downstream_pareto(p2, p3_down, extras)
+    make_fig3_rate_and_noise(p2, extras, shield, v3_s1)
+    make_fig4_wflw_external(p3_ext, v3_s6)
+    make_fig5_downstream_pareto(p2, p3_down, extras, v3_s6, v3_s6b)
     make_fig6_m256_and_failures()
     print(f"All 5 publication-grade vector figures saved to {FIG_DIR}")
 

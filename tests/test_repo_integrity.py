@@ -28,7 +28,7 @@ def test_all_python_sources_parse_cleanly() -> None:
     py_files = sorted(
         list((ROOT / "src").rglob("*.py")) + list((ROOT / "scripts").rglob("*.py"))
     )
-    assert len(py_files) >= 40
+    assert len(py_files) >= 45
     for pf in py_files:
         source = pf.read_text(encoding="utf-8")
         ast.parse(source, filename=str(pf))
@@ -44,22 +44,21 @@ def test_default_config_rates_and_dimensions() -> None:
 
 
 def test_blind_spectral_noise_estimator_monotonicity() -> None:
-    """Verify Eqs. (13)-(14) trailing-eigenmode noise variance scaling."""
-    # Synthetic ascending trailing eigenvalues of standardized measurement covariance
+    """Verify Eqs. (13)-(14) calibrated trailing-eigenmode noise variance scaling (alpha=8.0)."""
     trailing_eigs = [1e-4, 2e-4, 4e-4, 8e-4]
-    lam_min, lam_max = 4e-4, 0.25
+    lam_min, lam_max, alpha = 4e-4, 0.25, 8.0
 
     def estimate_lambda(proj_sq: list[float]) -> float:
         excess = sum(p - lam for p, lam in zip(proj_sq, trailing_eigs)) / len(trailing_eigs)
         sigma2 = max(0.0, excess)
-        return min(lam_max, max(lam_min, lam_min + 1.5 * sigma2))
+        return min(lam_max, max(lam_min, lam_min + alpha * sigma2))
 
     # Clean signal energy matches covariance eigenvalues -> stays at floor lam_min
     lam_clean = estimate_lambda(trailing_eigs)
     assert math.isclose(lam_clean, lam_min, rel_tol=1e-9)
 
     # Moderate additive noise elevates adaptive damping smoothly
-    lam_noisy = estimate_lambda([e + 0.01 for e in trailing_eigs])
+    lam_noisy = estimate_lambda([e + 0.005 for e in trailing_eigs])
     assert lam_clean < lam_noisy < lam_max
 
     # Severe drift saturates safely at upper bound lam_max
@@ -68,20 +67,20 @@ def test_blind_spectral_noise_estimator_monotonicity() -> None:
 
 
 def test_optional_torch_core_modules() -> None:
-    """When PyTorch is available, verify zero-step slot-residual & LoRA invariance."""
+    """When PyTorch is available, verify zero-step slot-residual, LoRA, and pixel refiner invariance."""
     try:
         import torch
     except ImportError:
         return
 
     from src.models.injection import FactorizedJointConditioner, LoRALinear
+    from src.models.pixel_refiner import LateStagePixelHFRefiner
 
     cond = FactorizedJointConditioner(hidden=768, num_blocks=4).eval()
     id_tok = cond.project_id(torch.randn(2, 512))
     geo_tok = cond.project_geo(torch.randn(2, 212))
     assert id_tok.shape == (2, 16, 768)
     assert geo_tok.shape == (2, 16, 768)
-    # Unit-RMS normalization and zero-initialized per-block gates
     assert torch.allclose(id_tok.pow(2).mean(dim=-1).sqrt(), torch.ones(2, 16), atol=1e-3)
     assert float(cond.id_scales().abs().max()) == 0.0
     assert float(cond.geo_scales().abs().max()) == 0.0
@@ -90,3 +89,10 @@ def test_optional_torch_core_modules() -> None:
     lora = LoRALinear(base, rank=16, alpha=16.0)
     x = torch.randn(3, 64)
     assert float((lora(x) - base(x)).abs().max()) == 0.0
+
+    # Zero-initialized post-flow pixel refiner must be an exact identity map at step 0
+    refiner = LateStagePixelHFRefiner(base=16).eval()
+    img = torch.randn(1, 3, 64, 64).clamp(-1.0, 1.0)
+    iw = torch.randn(1, 3, 64, 64).clamp(-1.0, 1.0)
+    rn = torch.tensor([0.75])
+    assert float((refiner(img, iw, rn) - img).abs().max()) < 1e-6
