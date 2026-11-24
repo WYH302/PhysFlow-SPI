@@ -28,6 +28,11 @@ The framework integrates four tightly coupled, physically grounded components:
 2. **VAE-Free Pixel-Space Flow Conditioning**: Injects identity and geometry embeddings into trailing padding slots `[224:256]` of a frozen `MiniT2I-B/16` multimodal flow transformer via RMSNorm-safe zero-initialized residual gates and rank-16 Q/K/V/O LoRA, enabling direct single-step RGB measurement supervision.
 3. **Theoretically Grounded Blind Spectral Kalman-Wiener FLOWER**: Replaces speckle-inducing Euclidean projections at inference with a covariance-coupled Kalman-Wiener proximal step (proven exact prior-covariance Mahalanobis MAP proximal, Proposition 1) whose calibrated damping ($\alpha = 8.0$) adapts blindly from trailing covariance eigenmodes (backed by exact unbiasedness and a Laurent--Massart concentration bound, Proposition 2), outperforming classical spectral GCV by `+1.39 dB` average PSNR (`+3.79 dB` on combined drift).
 4. **Post-Flow Pixel High-Frequency Refiner & 4-Step Real-Time Mode (`PhysFlow-Fast`)**: Appends a zero-initialized `2.27M`-parameter post-flow pixel refiner (`23.9 ms`) with final physical projection (`RelRes < 0.5%`), plus an optional 4-step CFG-free trajectory-distilled mode (`4 NFEs`, `5.09 FPS` batched, `13.1x` faster than LSI).
+5. **Real Physical DMD Hardware Transfer & Unaligned Arbitrary-FOV Recovery (Zero Generator Retraining)**: Zero-shot `PhysFlow-ZS` ranks `#1` across five genuine European laboratory DMD + spectrometer captures (CREATIS OpenSpyrit SPIHIM & 2026 ONE-PIX RGB) across differential (`15.67–21.17 dB`) and single-exposure unipolar `{0,1}` captures (`17.86 dB` vs. `10.44 dB` PnP-Flow and `13.16 dB` TV-FISTA). For unaligned arbitrary-FOV portraits, a `1.32M`-parameter ZCA-whitened measurement-domain face localizer (`MD-FaceLoc`, `0.053 ms`, `1.76 / 1.68 px` MAE) paired with exact algebraic linear operator pullback (`9.74e-7` relative error) lifts `M=256` unaligned recovery to **`19.92 dB` PSNR (`+3.97 dB` vs. LSI)** and **`3.72x` Buffalo\_L identity** (`89.8%` of oracle pose) with **zero extra training images**.
+
+<p align="center">
+  <img src="assets/real_dmd_and_unaligned.png" width="98%" alt="Real Physical DMD Hardware Validation and Unaligned Arbitrary-FOV Face Recovery" />
+</p>
 
 ### Key Benchmark Results (Single RTX 3090 24 GB)
 - **Training Cost**: `1.39` GPU-hours base adaptation (`83.29` min, `2.80 GB` peak VRAM, `42.73M` trainable parameters) + `8.55` min (`2.27M` refiner) + `15.28` min (optional 4-step distillation) = **`1.79` GPU-hours total**.
@@ -44,7 +49,7 @@ The framework integrates four tightly coupled, physically grounded components:
 | **PhysFlow-Fast (4-step)** | 132.09 | **0.0429** | **0.0728** | 0.5984 | **17.87** | 124.91 | **0.2022** | 0.5558 | **20.16** | 0.0045 |
 | **PhysFlow (Ours, 16-step)** | **114.31** | 0.0386 | 0.0750 | **0.5501** | 17.76 | **113.90** | 0.1961 | **0.5245** | 20.06 | 0.0038 |
 
-\*TV-FISTA yields 0/479 face detections. Across all 479 portraits, **PhysFlow sweeps all 14/14 generative columns**—surpassing LSI at $M=256$ in AdaFace by **`+34.1%`** ($p < 10^{-4}$), Buffalo\_L by **`+32.6%`** (`0.2100` vs. `0.1584`, $p < 10^{-4}$), PSNR by **`+3.32 dB`** (`20.06` vs. `16.74 dB`), FID (`113.90` vs. `119.29`), optical residual by **`10.1x`**, and perceptual LPIPS (**`0.5245` vs. `0.5340`**, $p = 0.00025$). On external LaPa ($M=256$), PhysFlow surpasses `0.20` in both recognizers (`0.2008` AdaFace, **`+46.1%`** vs. LSI; `0.2013` Buffalo\_L, **`+56.3%`** vs. LSI). On a 5-effect uncalibrated physical benchtop optical twin (`PSF blur + cos^4 vignetting + stray light + shot/readout/power drift + 12-bit ADC`), calibrated PhysFlow sustains `13.96 dB` (`45/45` detections) while PnP-Flow (`7.93 dB`, `12/45`) and ZS-FLOWER (`8.48 dB`, `7/45`) collapse.
+\*TV-FISTA yields 0/479 face detections. Across all 479 portraits, **PhysFlow sweeps all 14/14 generative columns**—surpassing LSI at $M=256$ in AdaFace by **`+34.1%`** ($p < 10^{-4}$), Buffalo\_L by **`+32.6%`** (`0.2100` vs. `0.1584`, $p < 10^{-4}$), PSNR by **`+3.32 dB`** (`20.06` vs. `16.74 dB`), FID (`113.90` vs. `119.29`), optical residual by **`10.1x`**, and perceptual LPIPS (**`0.5245` vs. `0.5340`**, $p = 0.00025$). Under the calibrated LSI CVPR 2025 DeepFace VGGFace (`< 0.68` cosine dist) & `NME_dg` protocol spanning 7 additional published baselines (`TCS-Net`, `FSI-DL`, `CSGM`, `SAUNet 1/8-bit`, `OCTUF`, `Non-Latent`), unified 5k-trained PhysFlow / PhysFlow-Fast outperforms 98k-trained official `LSI (simulation_256.pt)` by **`+15.0` to `+18.0` percentage points** (`73.0% / 76.0%` vs. `58.0%`) and cuts `NME_dg` by **`21.1%–22.0%`** (`1.76% / 1.74%` vs. `2.23%`). On external LaPa ($M=256$), PhysFlow surpasses `0.20` in both recognizers (`0.2008` AdaFace, **`+46.1%`** vs. LSI; `0.2013` Buffalo\_L, **`+56.3%`** vs. LSI). On five genuine CREATIS laboratory DMD + spectrometer datasets, zero-retrain `PhysFlow-ZS` sweeps all differential rates (`15.67 / 18.06 / 21.17 dB`) and single-exposure unipolar `{0,1}` captures (`17.86 dB`, `+7.42 dB` vs. PnP-Flow, `+4.70 dB` vs. TV-FISTA). On arbitrary unaligned-FOV CelebA-HQ portraits, `PhysFlow + MD-FaceLoc` (`0.053 ms`, zero extra training images, zero generator retraining) reaches **`19.92 dB` PSNR (`+3.97 dB` vs. LSI)** and **`0.1214` Buffalo\_L (`3.72x` LSI, `89.8%` of oracle)** at `M=256`, and **`17.54 dB` (`+10.46 dB` vs. LSI)** at `M=64`.
 
 ### Installation
 
@@ -102,6 +107,13 @@ python scripts/run_v3_step4_pixel_refiner.py
 python scripts/run_v3_step5_fast4step.py
 python scripts/run_v3_step6_final_full479.py
 python scripts/run_v3_step6b_quick_checks.py
+
+# Step 4: V4 Hardware, Unaligned FOV & Multi-Baseline Protocol Verification
+python scripts/run_v4_knife1_lsi_protocol.py        # Calibrated LSI CVPR'25 Table C.1 VGGFace + NME_dg
+python scripts/run_v4_knife2_real_dmd_hardware.py   # 5 genuine CREATIS SPIHIM / ONE-PIX real DMD captures
+python scripts/run_v4_knife3_unaligned_fov.py       # 0.053 ms ZCA MD-FaceLoc + exact operator pullback
+python scripts/run_v4_knife4_refiner_tv_and_figs.py # Residual TV refiner ablation & visual QA
+python scripts/generate_journal_figures.py          # Regenerate all publication vector PDFs (Figs. 1, 3-6, 8)
 ```
 
 ### Design Insights & Practical Lessons Learned
@@ -137,7 +149,8 @@ We gratefully acknowledge the authors of MiniT2I, Latent Space Imaging (LSI), FL
 1. **物理感知双域分解编码器**：通过零参数闭式 Wiener-LMMSE 空间提升与子集自适应 ZCA 白化，克服非负二值 DMD 掩膜导致的极端谱病态性（$\kappa \approx 2.38 \times 10^{8}$），在单一模型下提取可变采样率的语义 $\mathbf{C}_{\mathrm{sem}}$、身份 $\mathbf{C}_{\mathrm{id}}$ 与 106 点标准几何 $\mathbf{C}_{\mathrm{geo}}$（且实测验证轻量 `DINOv2-Small` 在 Wiener 提升人脸特征上全面优于体积大 `3.3x` 的 2025 `SigLIP2-Base`）。
 2. **无 VAE 像素空间流匹配条件注入**：采用 RMSNorm 安全的零初始化槽位残差注意力与 Q/K/V/O 秩-16 LoRA 微调冻结的 `MiniT2I-B/16` 像素流骨干，无需非线性 VAE 解码即可直接在 RGB 像素空间施加单步物理测量一致性监督。
 3. **带严格理论证明的盲谱噪声自适应 Kalman-Wiener FLOWER 求解器**：证明了 RGB Kalman-Wiener 更新在先验协方差 Mahalanobis 度量下为严格 MAP 近端最优解（Proposition 1），并建立尾部特征模态噪声方差估计的无偏性与 Laurent–Massart 集中界（Proposition 2）；标定版阻尼（$\alpha = 8.0$）在六类未校准噪声下以 `14.76 dB` 领先经典谱 GCV（`13.37 dB`）达 `+1.39 dB`（复合漂移 N4 领先 `+3.79 dB`），并在 5 效应物理光学台架数字孪生下稳守 `13.96 dB` 与 `100%` 人脸检出率。
-4. **晚期像素高频精修头与 4 步无 CFG 实时模式（`PhysFlow-Fast`）**：严格解耦于流末端（`t = 1`）的 `2.27M` 零初始化像素精修头（仅增 `23.9 ms`）配合末步物理投影，在全量 `479` 张 CelebA-HQ 上实现生成式模型 **`14/14` 全维度横扫**（`M=256` LPIPS `0.5245` 显著超越 StyleGAN-XL 版 LSI 的 `0.5340`，$p = 0.00025$；AdaFace `+34.1%`；PSNR 突破 `20.06 dB`）；4 步无 CFG 轨迹蒸馏模式 `PhysFlow-Fast` 仅需 `4` 次骨干前向，批处理达 **`5.09 FPS`**（`0.196 s/图`，比 LSI 快 **`13.1 倍`**）！
+4. **晚期像素高频精修头与 4 步无 CFG 实时模式（`PhysFlow-Fast`）**：严格解耦于流末端（`t = 1`）的 `2.27M` 零初始化像素精修头（仅增 `23.9 ms`）配合末步物理投影，在全量 `479` 张 CelebA-HQ 上实现生成式模型 **`14/14` 全维度横扫**（`M=256` LPIPS `0.5245` 显著超越 StyleGAN-XL 版 LSI 的 `0.5340`，$p = 0.00025$；AdaFace `+34.1%`；PSNR 突破 `20.06 dB`）；在对齐 LSI CVPR 2025 DeepFace VGGFace (`<0.68`) 10 基线协议下以 `73.0%/76.0%` 领先官方 LSI (`58.0%`) 达 **`+15~18` 个百分点**；4 步无 CFG 模式 `PhysFlow-Fast` 批处理达 **`5.09 FPS`**（较 LSI 快 **`13.1 倍`**）。
+5. **真实欧洲 DMD 光学台架实测与任意非对齐 FOV 零重训拓展**：零重训 `PhysFlow-ZS` 在 5 套法国 CREATIS 实验室真实物理 DMD + 光谱仪台架数据上全面夺冠（差分采样 `15.67–21.17 dB`，单次曝光单极性 `{0,1}` 采样 `17.86 dB` 显著胜 `PnP-Flow 10.44 dB` 与 `TV-FISTA 13.16 dB`）；针对任意非对齐视场，仅用现有 5,000 张人脸训练的 `1.32M` ZCA 白化测量域定位器 `MD-FaceLoc`（`0.053 ms/图`，定位误差 `1.76 / 1.68 px`）结合精确线性算子拉回，在零扩增数据、零重训生成器前提下将 `M=256` 非对齐重建提升至 **`19.92 dB` PSNR（胜 LSI `+3.97 dB`）**与 **`3.72x` Buffalo\_L 身份相似度**（达 Oracle 位姿上界的 `89.8%`）。
 
 ### 算力成本与核心性能（单张 RTX 3090 24 GB）
 - **总训练开销**：基础三阶段仅需 **1.39 GPU 小时**（峰值显存 **2.80 GB**），叠加 `2.27M` 精修头（`8.55 min`）与可选 4 步蒸馏（`15.28 min`）总计仅 **1.79 GPU 小时**。

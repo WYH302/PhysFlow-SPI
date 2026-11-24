@@ -138,8 +138,8 @@ def setup_rc() -> None:
     })
 
 
-def make_fig1_teaser(p2: dict, extras: dict) -> None:
-    """Fig. 1: 8-column visual comparison at M=64 (SR=0.098%) + 3 quantitative summary panels."""
+def make_fig1_teaser(p2: dict, extras: dict, v3_s6b: dict) -> None:
+    """Fig. 1: 8-column visual comparison at M=64 (SR=0.098%) + 3 quantitative summary panels (100% V3-synced)."""
     tea = slice_grid_clean(OUTPUTS / "phase2_teaser_strip_m64.png", nrow=4, ncol=6)
     # Use top 3 visually diverse faces (indices 0, 1, 2 in teaser) for crisp 2-column height
     gt_tiles = [tea[r][0] for r in range(3)]
@@ -147,6 +147,7 @@ def make_fig1_teaser(p2: dict, extras: dict) -> None:
     ex_pt = torch.load(OUTPUTS / "extra_baselines_m64.pt", map_location="cpu", weights_only=False)
     tik_t = ex_pt["tikhonov_m64"]
     pnp_t = ex_pt["pnp_flow_m64"]
+    v3_tiles = torch.load(OUTPUTS / "v4_toptier" / "fig1_fig6_v3_tiles.pt", map_location="cpu", weights_only=False)["fig1_v3_m64"]
 
     # Columns: GT | Tikhonov | Wiener-LMMSE | Text (B0) | PnP-Flow | ZS-FLOWER | LSI | PhysFlow (Ours)
     rows = []
@@ -159,7 +160,7 @@ def make_fig1_teaser(p2: dict, extras: dict) -> None:
             tensor_to_uint8(pnp_t[idx]),       # PnP-Flow (ICLR'25)
             tea[r][3],                         # ZS-FLOWER (ICLR'26)
             tea[r][4],                         # LSI (CVPR'25)
-            tea[r][5],                         # PhysFlow (Ours)
+            tensor_to_uint8(v3_tiles[idx]),    # PhysFlow (Ours, V3+Refiner)
         ])
     mosaic, s, pad = compose_mosaic(rows, pad=12, highlight_col=7, border_px=10)
 
@@ -187,22 +188,23 @@ def make_fig1_teaser(p2: dict, extras: dict) -> None:
         cx = ci * (s + pad) + s * 0.5
         ax_top.text(cx, -24, ch, ha="center", va="bottom", fontsize=8.8, fontweight="bold", color="#000000", linespacing=1.08)
 
-    # Bottom quantitative bar charts at M = 64
+    # Bottom quantitative bar charts at M = 64 (100% V3-synced on the 45-portrait diagnostic benchmark)
     ex_r = extras["extra_baselines_celebahq"]["rates"]
+    pf_v3_64 = v3_s6b["v3_16step_proj075"]["hq45"]["64"]
     methods = [
         ("Tikh.", ex_r["tikhonov_bp"]["64"], PALETTE["tikhonov"]),
         ("Text\n(B0)", p2["rates"]["b0_discrete"]["64"], PALETTE["text"]),
         ("PnP-\nFlow", ex_r["pnp_flow"]["64"], PALETTE["pnp_flow"]),
         ("ZS-\nFLW", p2["rates"]["zeroshot_flower"]["64"], PALETTE["zs_flower"]),
         ("LSI", p2["rates"]["lsi"]["64"], PALETTE["lsi"]),
-        ("Phys-\nFlow", p2["rates"]["b3_physflow"]["64"], PALETTE["physflow"]),
+        ("Phys-\nFlow", pf_v3_64, PALETTE["physflow"]),
     ]
     xm = np.arange(len(methods))
     lbls = [m[0] for m in methods]
     cols = [m[2] for m in methods]
 
     specs = [
-        ("adaface_cos_mean", "AdaFace Cosine ↑", "(a) Identity Preservation (M = 64)", (-0.018, 0.038)),
+        ("adaface_cos_mean", "AdaFace Cosine ↑", "(a) Identity Preservation (M = 64)", (-0.018, 0.068)),
         ("nme106_mean", "106-pt Landmark NME ↓", "(b) Geometric Error (M = 64)", (0.0, 0.94)),
         ("meas_rel_mean", "Relative Residual ↓", "(c) Physical Consistency (M = 64)", (0.0, 0.43)),
     ]
@@ -526,13 +528,16 @@ def make_fig5_downstream_pareto(p2: dict, p3_down: dict, extras: dict, v3_s6: di
 
 
 def make_fig6_m256_and_failures() -> None:
-    """Fig. 6: Side-by-side M=256 high-fidelity reconstructions + M=64 representative hard cases."""
+    """Fig. 6: Side-by-side M=256 high-fidelity reconstructions (100% V3-synced) + M=64 hard cases."""
     m256 = slice_grid_clean(OUTPUTS / "phase2_real_comparison_m256.png", nrow=12, ncol=6)
     fails = slice_grid_clean(OUTPUTS / "phase2_real_failures_m64.png", nrow=5, ncol=4)
+    v3_pack = torch.load(OUTPUTS / "v4_toptier" / "fig1_fig6_v3_tiles.pt", map_location="cpu", weights_only=False)
+    v3_256 = v3_pack["fig6a_v3_m256"]
+    fig6a_idx = v3_pack["fig6a_idx"]
 
-    # Left panel (a): 4 visually crisp rows at M=256 (rows 0, 2, 5, 11): GT | ZS-FLOWER | LSI | PhysFlow
+    # Left panel (a): 4 visually crisp rows at M=256 (rows 0, 2, 5, 11): GT | ZS-FLOWER | LSI | PhysFlow (V3+Refiner)
     pick_256 = [0, 2, 5, 11]
-    rows_a = [[m256[r][0], m256[r][2], m256[r][3], m256[r][5]] for r in pick_256]
+    rows_a = [[m256[r][0], m256[r][2], m256[r][3], tensor_to_uint8(v3_256[idx])] for r, idx in zip(pick_256, fig6a_idx)]
     mos_a, s, pad = compose_mosaic(rows_a, pad=18, highlight_col=3, border_px=10)
 
     # Right panel (b): 4 representative M=64 hard cases
@@ -568,6 +573,143 @@ def make_fig6_m256_and_failures() -> None:
     plt.close(fig)
 
 
+def make_fig8_real_dmd_and_unaligned() -> None:
+    """Fig. 8: Real physical European DMD optical benchtop hardware (a) + Unaligned arbitrary-FOV MD-FaceLoc (b)."""
+    k2_json = load_json(OUTPUTS / "v4_toptier" / "knife2_real_dmd.json")
+    k2_tiles = torch.load(OUTPUTS / "v4_toptier" / "knife2_real_dmd_tiles.pt", map_location="cpu", weights_only=False)
+    k3_json = load_json(OUTPUTS / "v4_toptier" / "knife3_unaligned_fov.json")
+    k3_tiles = torch.load(OUTPUTS / "v4_toptier" / "knife3_unaligned_tiles.pt", map_location="cpu", weights_only=False)
+
+    # Panel (a) Left: 4 real physical DMD scenes x 6 methods at SR = 12.5%
+    dmd_rows_meta = [
+        ("zoom_x12_usaf_group5", "USAF 1951\n($64\\times 64$)"),
+        ("zoom_x12_starsector", "Siemens Star\n($64\\times 64$)"),
+        ("zoom_x12_tomato_slice_2", "Tomato $\\times 12$\n($64\\times 64$)"),
+        ("onepix_rgb_128", "ONE-PIX RGB\n($32\\times 32\\times 3$)"),
+    ]
+    dmd_cols = ["gt", "pinv", "tv_fista", "pnp_flow", "zs_flower", "physflow_zs"]
+    dmd_headers = ["Full-Mode\nRef", "Pinv", "TV-FISTA", "PnP-Flow\n(ICLR'25)", "ZS-FLOWER\n(ICLR'26)", "PhysFlow-ZS\n(Ours)"]
+    S_dmd = 192
+    rows_dmd = []
+    for rk, _ in dmd_rows_meta:
+        row_arr = []
+        for ck in dmd_cols:
+            t = k2_tiles[rk][ck].float().clamp(0.0, 1.0)
+            if t.shape[0] == 1:
+                t = t.repeat(3, 1, 1)
+            arr = (t.permute(1, 2, 0).numpy() * 255.0 + 0.5).astype(np.uint8)
+            im = np.asarray(Image.fromarray(arr).resize((S_dmd, S_dmd), Image.NEAREST))
+            row_arr.append(im)
+        rows_dmd.append(row_arr)
+    mos_dmd, s1, p1 = compose_mosaic(rows_dmd, pad=16, highlight_col=5, border_px=7)
+
+    # Panel (b) Left: 3 unaligned CelebA-HQ faces (indices 0, 1, 3) x 5 columns at M = 256
+    pick_u = [0, 1, 3]
+    rows_u = []
+    for idx in pick_u:
+        def _u8(t_m11: torch.Tensor) -> np.ndarray:
+            arr = ((t_m11.float().clamp(-1.0, 1.0) + 1.0) * 0.5).permute(1, 2, 0).numpy()
+            im = Image.fromarray((arr * 255.0 + 0.5).astype(np.uint8)).resize((256, 256), Image.BILINEAR)
+            return np.asarray(im)
+        rows_u.append([
+            _u8(k3_tiles["gt_scene_512"][idx]),
+            _u8(k3_tiles["lsi_256"][idx]),
+            _u8(k3_tiles["noloc_256"][idx]),
+            _u8(k3_tiles["mdloc_256"][idx]),
+            _u8(k3_tiles["oracle_256"][idx]),
+        ])
+    mos_u, s2, p2 = compose_mosaic(rows_u, pad=12, highlight_col=3, border_px=8)
+
+    fig = plt.figure(figsize=(12.2, 8.6))
+    gs = fig.add_gridspec(2, 2, width_ratios=[1.62, 1.0], height_ratios=[1.05, 1.0], hspace=0.34, wspace=0.22)
+
+    # (a) Left: Real Physical DMD Visual Mosaic
+    ax_a1 = fig.add_subplot(gs[0, 0])
+    ax_a1.imshow(mos_dmd)
+    ax_a1.set_xticks([]); ax_a1.set_yticks([])
+    for sp in ax_a1.spines.values():
+        sp.set_visible(False)
+    for ci, ch in enumerate(dmd_headers):
+        ax_a1.text(ci * (s1 + p1) + s1 * 0.5, -14, ch, ha="center", va="bottom", fontsize=6.8, fontweight="bold", color="#000000", linespacing=1.06)
+    for ri, (_, rlbl) in enumerate(dmd_rows_meta):
+        ax_a1.text(-14, ri * (s1 + p1) + s1 * 0.5, rlbl, ha="right", va="center", fontsize=7.5, fontweight="bold", color="#000000", linespacing=1.05)
+    ax_a1.text(0.5, -0.06, "(a) Real Physical Optical DMD Hardware Reconstructions (SR = 12.5%, Zero Retraining)",
+               transform=ax_a1.transAxes, ha="center", va="top", fontsize=8.8, fontweight="bold", color="#000000")
+
+    # (a) Right: Real Physical DMD Quantitative Summary (Broadband 6.25/12.5/25% + Unipolar {0,1} 12.5%)
+    ax_a2 = fig.add_subplot(gs[0, 1])
+    regimes = ["Diff.\n6.25%", "Diff.\n12.5%", "Diff.\n25.0%", "Unip. {0,1}\n12.5%"]
+    x_r = np.arange(len(regimes))
+    m_specs = [
+        ("Pinv", "pinv", PALETTE["tikhonov"]),
+        ("TV-FISTA", "tv_fista", PALETTE["text"]),
+        ("ZS-FLOWER", "zs_flower", PALETTE["zs_flower"]),
+        ("PhysFlow-ZS", "physflow_zs", PALETTE["physflow"]),
+    ]
+    w_bar = 0.19
+    for mi, (mlbl, mkey, col) in enumerate(m_specs):
+        vals = [
+            k2_json["broadband_diff"]["256"]["mean"][mkey]["psnr"],
+            k2_json["broadband_diff"]["512"]["mean"][mkey]["psnr"],
+            k2_json["broadband_diff"]["1024"]["mean"][mkey]["psnr"],
+            k2_json["unipolar_binary_dmd"]["mean"][mkey]["psnr"],
+        ]
+        offs = x_r + (mi - 1.5) * w_bar
+        ax_a2.bar(offs, vals, width=w_bar, color=col, edgecolor="#222222", linewidth=0.45, label=mlbl, zorder=3)
+        if mkey == "physflow_zs":
+            for xi, vv in zip(offs, vals):
+                ax_a2.text(xi, vv + 0.25, f"{vv:.2f}", ha="center", va="bottom", fontsize=7.0, fontweight="bold", color="#000000")
+    ax_a2.set_xticks(x_r)
+    ax_a2.set_xticklabels(regimes, fontsize=7.8)
+    ax_a2.set_ylabel("Real Benchtop PSNR (dB) ↑", fontsize=8.4)
+    ax_a2.set_ylim(10.0, 23.0)
+    ax_a2.grid(axis="y", zorder=0)
+    ax_a2.legend(loc="upper left", ncol=2, frameon=False, fontsize=7.3, columnspacing=0.8)
+    ax_a2.text(0.5, -0.22, "(b) Real DMD PSNR (Diff. & Single-Exposure Unipolar)",
+               transform=ax_a2.transAxes, ha="center", va="top", fontsize=8.8, fontweight="bold", color="#000000")
+
+    # (b) Left: Unaligned Arbitrary-FOV Visual Mosaic
+    ax_b1 = fig.add_subplot(gs[1, 0])
+    ax_b1.imshow(mos_u)
+    ax_b1.set_xticks([]); ax_b1.set_yticks([])
+    for sp in ax_b1.spines.values():
+        sp.set_visible(False)
+    u_headers = ["Unaligned\nGround Truth", "LSI\n(CVPR'25)", "PhysFlow\n(w/o Loc)", "PhysFlow +\nMD-FaceLoc", "Oracle Pose\n(Upper Bound)"]
+    for ci, ch in enumerate(u_headers):
+        ax_b1.text(ci * (s2 + p2) + s2 * 0.5, -18, ch, ha="center", va="bottom", fontsize=7.8, fontweight="bold", color="#000000", linespacing=1.05)
+    ax_b1.text(0.5, -0.06, "(c) Unaligned Arbitrary-FOV Face Recovery (M = 256, 0.053 ms ZCA MD-FaceLoc)",
+               transform=ax_b1.transAxes, ha="center", va="top", fontsize=8.8, fontweight="bold", color="#000000")
+
+    # (b) Right: Unaligned Arbitrary-FOV Biometric Recovery Bar Chart (M = 256)
+    ax_b2 = fig.add_subplot(gs[1, 1])
+    u_methods = [
+        ("LSI\n(CVPR'25)", "lsi_unaligned", PALETTE["lsi"]),
+        ("PhysFlow\n(w/o Loc)", "physflow_no_loc", PALETTE["b2_geo"]),
+        ("PhysFlow +\nMD-FaceLoc", "physflow_md_faceloc", PALETTE["physflow"]),
+        ("Oracle\nPose", "physflow_oracle_pose", PALETTE["zs_flower"]),
+    ]
+    xu = np.arange(len(u_methods))
+    buf_vals = [k3_json["methods"][mk]["256"]["buffalo_det_cos"] for _, mk, _ in u_methods]
+    ada_vals = [k3_json["methods"][mk]["256"]["adaface_gt_crop_cos"] for _, mk, _ in u_methods]
+    w2 = 0.34
+    ax_b2.bar(xu - w2 * 0.54, buf_vals, width=w2, color=PALETTE["physflow"], edgecolor="#222222", linewidth=0.45, label="Buffalo_L (auto-det) ↑", zorder=3)
+    ax_b2.bar(xu + w2 * 0.54, ada_vals, width=w2, color=PALETTE["pnp_flow"], edgecolor="#222222", linewidth=0.45, label="AdaFace (GT-crop) ↑", zorder=3)
+    for xi, bv, av in zip(xu, buf_vals, ada_vals):
+        ax_b2.text(xi - w2 * 0.58, bv + 0.003, f"{bv:.3f}", ha="center", va="bottom", fontsize=6.4, fontweight="bold", color="#000000")
+        ax_b2.text(xi + w2 * 0.58, av + 0.003, f"{av:.3f}", ha="center", va="bottom", fontsize=6.4, fontweight="bold", color="#000000")
+    ax_b2.set_xticks(xu)
+    ax_b2.set_xticklabels([m[0] for m in u_methods], fontsize=7.6)
+    ax_b2.set_ylabel("Unaligned Identity Cosine ↑", fontsize=8.4)
+    ax_b2.set_ylim(0.0, 0.165)
+    ax_b2.grid(axis="y", zorder=0)
+    ax_b2.legend(loc="upper left", frameon=False, fontsize=7.5)
+    ax_b2.text(0.5, -0.22, "(d) Unaligned FOV Biometric Fidelity (M = 256, N = 45)",
+               transform=ax_b2.transAxes, ha="center", va="top", fontsize=8.8, fontweight="bold", color="#000000")
+
+    fig.savefig(FIG_DIR / "fig8_real_dmd_and_unaligned.pdf", bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     setup_rc()
@@ -580,12 +722,13 @@ def main() -> None:
     v3_s6 = load_json(OUTPUTS / "v3_surgery" / "step6_final_full479_v3.json")
     v3_s6b = load_json(OUTPUTS / "v3_surgery" / "step6b_parity_and_qa.json")
 
-    make_fig1_teaser(p2, extras)
+    make_fig1_teaser(p2, extras, v3_s6b)
     make_fig3_rate_and_noise(p2, extras, shield, v3_s1)
     make_fig4_wflw_external(p3_ext, v3_s6)
     make_fig5_downstream_pareto(p2, p3_down, extras, v3_s6, v3_s6b)
     make_fig6_m256_and_failures()
-    print(f"All 5 publication-grade vector figures saved to {FIG_DIR}")
+    make_fig8_real_dmd_and_unaligned()
+    print(f"All 6 publication-grade vector figures saved to {FIG_DIR}")
 
 
 if __name__ == "__main__":
