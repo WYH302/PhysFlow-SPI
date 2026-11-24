@@ -19,6 +19,10 @@
 ### Overview
 **PhysFlow** is an open-source PyTorch implementation for variable-rate single-pixel face reconstruction and reconstruction-free facial analysis under extreme sub-Nyquist binary sampling ($M \in \{16, 32, 64, 128, 256\}$ patterns over $256 \times 256$ optics, i.e., $0.02\%$--$0.39\%$ sampling rate).
 
+<p align="center">
+  <img src="assets/architecture.png" width="98%" alt="PhysFlow Architecture: Optical Sensing, Dual-Domain Factorizer, Slot-Residual Pixel Flow, and Blind Kalman-Wiener Solver" />
+</p>
+
 The framework combines three lightweight, physically grounded components:
 1. **Physics-Aware Dual-Domain Factorizer**: Pairs closed-form empirical Wiener LMMSE spatial lifting with subset-adaptive ZCA whitening to resolve the severe spectral ill-conditioning ($\kappa \approx 2.38 \times 10^{8}$) of non-negative binary DMD masks, extracting continuous semantics ($\mathbf{C}_{\mathrm{sem}}$), identity ($\mathbf{C}_{\mathrm{id}}$), and 106-point canonical geometry ($\mathbf{C}_{\mathrm{geo}}$) across variable sampling rates without retraining per rate.
 2. **VAE-Free Pixel-Space Flow Conditioning**: Injects identity and geometry embeddings into trailing padding slots of a frozen MiniT2I-B/16 multimodal flow transformer via RMSNorm-safe zero-initialized residual gates and rank-16 Q/K/V/O LoRA, allowing direct single-step measurement consistency in RGB pixel space.
@@ -66,7 +70,7 @@ python scripts/smoke_modules.py
 Place public benchmarks and third-party pretrained weights under the following local directories (excluded from git via `.gitignore`):
 - `data/raw/{ffhq, celeba, celeba_hq, lapa, wflw}` (with `identity_CelebA.txt` and `list_attr_celeba.txt` under `celeba/`)
 - `third_party/latent-imaging/paper_checkpoints/` (official LSI binary mask $\Phi$ and StyleGAN-XL baseline weights)
-- `checkpoints/` (MiniT2I-B/16, FLAN-T5-Base, DINOv2-Small, InsightFace AntelopeV2 / Buffalo\_L, and AdaFace IR-101)
+- `checkpoints/` (MiniT2I-B/16, FLAN-T5-Large, DINOv2-Small, InsightFace AntelopeV2 / Buffalo\_L, and AdaFace IR-101)
 
 ### Reproducing Experiments
 
@@ -88,7 +92,18 @@ python scripts/run_phase2_e2e_physflow.py
 python scripts/run_phase3_downstream_and_paper.py
 python scripts/eval_lapa_wflw.py
 python scripts/run_journal_audit_extras.py
+
+# Step 4: Blind spectral ablation, hyperparameter sensitivity, Hadamard/Bernoulli DMD transfer & full-479 FID
+python scripts/run_reviewer_shield_suite.py
+python scripts/finish_module_e_full479.py
 ```
+
+### Design Insights & Practical Lessons Learned
+Building PhysFlow involved several instructive dead ends that shaped the final lightweight architecture; we share them candidly in case they help fellow researchers working on computational optics and flow matching:
+1. **Why naive 1D SPI encoders stall near the mean face**: Non-negative binary DMD patterns share a large DC floor ($\kappa(\Sigma_y) \approx 2.38 \times 10^{8}$). Before adding subset-adaptive ZCA whitening and closed-form Wiener spatial lifting, a standard 1D MLP barely beat predicting the mean portrait (`NME = 0.0971` vs. `0.0975`). Equalizing the spectrum first immediately cut landmark error by `35.2%` with zero extra trainable weights.
+2. **Why RMSNorm breaks naive zero-initialized adapters**: In MiniT2I-B/16 (MM-JiT), every text block applies RMSNorm to its 256-slot sequence. Appending small-norm tokens fails because $\mathrm{RMSNorm}(\alpha \mathbf{h}) = \mathrm{RMSNorm}(\mathbf{h})$ amplifies tiny noise to full magnitude at step 0. Injecting unit-RMS identity/geometry tokens strictly into unused trailing padding slots `[224:256]` with zero-initialized $\tanh(\gamma_l)$ residual gates preserved exact `0.0` step-0 deviation.
+3. **Why mid-trajectory VGG perceptual losses and over-long fine-tuning hurt pixel flows**: Adding a VGG-16 perceptual loss on mid-$t$ one-step clean estimates (`t >= 0.45`) severely destabilized the straight-line velocity field (validation LPIPS degraded `0.5349 -> 0.6739`, SSIM `0.6574 -> 0.3586`). Likewise, extending Stage-2 fine-tuning `2.5x` from `600` to `1,500` steps gently overfit the 5k training split, lowering zero-shot LaPa identity (`0.1785 -> 0.1614`). Keeping exact velocity matching for `600` steps (`1.39` GPU-hours) proved the true generalization optimum.
+4. **Why optical mask structure still matters at `0.1%–0.4%` compression**: Plugging our frozen generator onto standard 2D sequency-ordered Walsh-Hadamard `{0,1}` DMD masks recovers strong identity (`0.1168` AdaFace, `19.97 dB` PSNR), whereas unstructured random Bernoulli `{0,1}` masks spread energy across all 65,536 pixels, preserving pose/luminance (`0.0908` NME, `17.07 dB` PSNR) but limiting fine biometric SNR.
 
 ### Citation
 
@@ -122,8 +137,15 @@ We gratefully acknowledge the authors of MiniT2I, Latent Space Imaging (LSI), FL
 - **推理吞吐**：免重建 106 点关键点与 40 属性分析达 **55.9 FPS**（17.88 ms / 5.55 GFLOPs）；8 步 / 16 步 $512 \times 512$ 图像重建分别达 **2.25 FPS**（0.44 s）与 **1.15 FPS**（0.87 s，较 CVPR 2025 LSI 快 **2.95 倍**）。
 - **跨数据集泛化**：在 CelebA-HQ、CelebA、LaPa 以及 WFLW 六类困难子集（姿态、表情、光照、妆容、遮挡、模糊）上综合超越 LSI (CVPR 2025)、PnP-Flow (ICLR 2025) 与 Zero-Shot FLOWER (ICLR 2026)；在 69 位未见名人的严格跨身份 5 折交叉验证中，免重建关键点误差较 LSI 降低 28.9%（$p = 2.8 \times 10^{-5}$），40 属性 Macro-F1 提升 47.7%（$p = 3.8 \times 10^{-4}$）。
 
+### 核心思考与踩坑记录
+在研发与调优 PhysFlow 的过程中，我们曾走过几次非常有启发性的弯路，特此坦诚记录，希望能为做计算光学与流匹配逆问题的同行节省排雷时间：
+1. **为什么直接用 1D 神经网络编码二值单像素读数容易塌缩**：非负二值 DMD 掩膜带有极强的公共直流（DC）分量，导致测量协方差条件数高达 $\kappa(\Sigma_y) \approx 2.38 \times 10^{8}$。在引入子集自适应 ZCA 白化与闭式 Wiener 空间提升之前，标准 1D MLP 的关键点误差几乎与直接输出平均脸无异（`0.0971` vs. `0.0975`）；仅靠零参数物理白化便立刻将误差降低 `35.2%`。
+2. **RMSNorm 架构下“零初始化失效”陷阱**：MiniT2I-B/16 (MM-JiT) 在文本流使用 RMSNorm，由于 $\mathrm{RMSNorm}(\alpha \mathbf{h}) = \mathrm{RMSNorm}(\mathbf{h})$，直接拼接小幅值外部 token 会在第 0 步被放大并破坏预训练先验。将单位 RMS 的身份/几何向量仅以零初始化 $\tanh(\gamma_l)$ 残差门控注入原生 256 槽位的尾部空闲区 `[224:256]`，才真正实现了第 0 步 `0.0` 数值偏差的平滑微调。
+3. **中段感知损失与过长微调的反效果**：在像素流匹配中段（`t >= 0.45`）直接对单步预测加 VGG-16 感知损失会破坏直线速度场（验证集 LPIPS 从 `0.5349` 恶化至 `0.6739`）；将二阶段微调步数盲目拉长 2.5 倍（`600 -> 1500` 步）也会导致对 5,000 张训练集轻微过拟合，使外部 LaPa 身份相似度从 `0.1785` 降至 `0.1614`。最终证明 `600` 步纯精确速度匹配（总耗时 `1.39` GPU 小时）才是泛化与算力的最优点。
+4. **极端压缩下光学掩膜结构的物理边界**：在不重训生成器的前提下，迁移到标准 2D 序率排序 Walsh-Hadamard `{0,1}` DMD 掩膜依然能保持高身份保真（`M=256` 达 `19.97 dB` PSNR、`0.1168` AdaFace）；而完全无结构的随机 Bernoulli `{0,1}` 掩膜将能量均匀分散到 65,536 个像素，虽能准确恢复姿态与光照（`0.0908` NME、`17.07 dB` PSNR），但在极低采样率下的高频生物特征信噪比存在物理上限。
+
 ### 快速复现步骤
-请参照上方英文说明完成 Python 3.12 + CUDA PyTorch 环境安装，按目录结构放置公开数据集与预训练权重后，依次运行 `scripts/smoke_modules.py`、`build_real_dataset_cache.py`、`run_phase1a_real.py`、`run_phase1b_oracle_real.py`、`run_phase2_e2e_physflow.py`、`run_phase3_downstream_and_paper.py`、`eval_lapa_wflw.py` 与 `run_journal_audit_extras.py` 即可完整复现论文全部结果。
+请参照上方英文说明完成 Python 3.12 + CUDA PyTorch 环境安装，按目录结构放置公开数据集与预训练权重后，依次运行 `scripts/smoke_modules.py`、`build_real_dataset_cache.py`、`run_phase1a_real.py`、`run_phase1b_oracle_real.py`、`run_phase2_e2e_physflow.py`、`run_phase3_downstream_and_paper.py`、`eval_lapa_wflw.py`、`run_journal_audit_extras.py`、`run_reviewer_shield_suite.py` 与 `finish_module_e_full479.py` 即可完整复现论文全部结果。
 
 ### 许可证与联系
 本项目基于 [MIT License](LICENSE) 开源。如有学术交流或复现问题，欢迎联系 `yonghaowu369@gmail.com`。

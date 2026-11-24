@@ -114,6 +114,11 @@ def setup_rc() -> None:
         "font.family": "serif",
         "font.serif": ["DejaVu Serif", "Times New Roman", "STIXGeneral"],
         "mathtext.fontset": "stix",
+        "text.color": "#000000",
+        "axes.labelcolor": "#000000",
+        "axes.edgecolor": "#000000",
+        "xtick.color": "#000000",
+        "ytick.color": "#000000",
         "font.size": 9.0,
         "axes.labelsize": 9.0,
         "axes.titlesize": 9.5,
@@ -128,6 +133,8 @@ def setup_rc() -> None:
         "grid.linewidth": 0.55,
         "grid.alpha": 0.65,
         "savefig.dpi": 300,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
     })
 
 
@@ -178,8 +185,7 @@ def make_fig1_teaser(p2: dict, extras: dict) -> None:
     ]
     for ci, ch in enumerate(col_headers):
         cx = ci * (s + pad) + s * 0.5
-        col_c = PALETTE["physflow"] if ci == 7 else "#111111"
-        ax_top.text(cx, -24, ch, ha="center", va="bottom", fontsize=8.8, fontweight="bold", color=col_c, linespacing=1.08)
+        ax_top.text(cx, -24, ch, ha="center", va="bottom", fontsize=8.8, fontweight="bold", color="#000000", linespacing=1.08)
 
     # Bottom quantitative bar charts at M = 64
     ex_r = extras["extra_baselines_celebahq"]["rates"]
@@ -213,15 +219,15 @@ def make_fig1_teaser(p2: dict, extras: dict) -> None:
         # Clean value label ONLY on hero PhysFlow bar to stay uncluttered
         hv = vals[-1]
         ax.text(xm[-1], hv + (ylim[1] - ylim[0]) * 0.035, f"{hv:.4f}" if metric != "adaface_cos_mean" else f"{hv:.3f}",
-                ha="center", va="bottom", fontsize=7.6, fontweight="bold", color=PALETTE["physflow"])
-        ax.text(0.5, -0.34, subcap, transform=ax.transAxes, ha="center", va="top", fontsize=9.0, fontweight="bold")
+                ha="center", va="bottom", fontsize=7.6, fontweight="bold", color="#000000")
+        ax.text(0.5, -0.34, subcap, transform=ax.transAxes, ha="center", va="top", fontsize=9.0, fontweight="bold", color="#000000")
 
     fig.savefig(FIG_DIR / "fig1_teaser_comparison.pdf", bbox_inches="tight")
     fig.savefig(FIG_DIR / "fig1_teaser_comparison.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
-def make_fig3_rate_and_noise(p2: dict, extras: dict) -> None:
+def make_fig3_rate_and_noise(p2: dict, extras: dict, shield: dict) -> None:
     """Fig. 3: Rate-distortion curves (with PnP-Flow, Tikhonov, Wiener, ZS-FLOWER, LSI, PhysFlow) + 6-axis noise."""
     rates = [16, 32, 64, 128, 256]
     sr_labels = [f"{r}\n({100*r/65536:.2f}%)" for r in rates]
@@ -257,7 +263,7 @@ def make_fig3_rate_and_noise(p2: dict, extras: dict) -> None:
     axes[0].set_ylim(-0.025, 0.185)
     axes[0].grid(True, zorder=0)
     axes[0].text(0.5, -0.38, "(a) Identity vs. Sampling Rate", transform=axes[0].transAxes,
-                 ha="center", va="top", fontsize=9.0, fontweight="bold")
+                 ha="center", va="top", fontsize=9.0, fontweight="bold", color="#000000")
 
     axes[1].set_xticks(x); axes[1].set_xticklabels(sr_labels, fontsize=7.7)
     axes[1].set_xlabel("Measurements $M$ (Sampling Rate)", fontsize=8.5)
@@ -265,31 +271,33 @@ def make_fig3_rate_and_noise(p2: dict, extras: dict) -> None:
     axes[1].set_ylim(0.02, 0.90)
     axes[1].grid(True, zorder=0)
     axes[1].text(0.5, -0.38, "(b) Geometry vs. Sampling Rate", transform=axes[1].transAxes,
-                 ha="center", va="top", fontsize=9.0, fontweight="bold")
+                 ha="center", va="top", fontsize=9.0, fontweight="bold", color="#000000")
 
     # Shared clean horizontal legend centered above (a) and (b)
     fig.legend(handles_ab, labels_ab, loc="upper center", bbox_to_anchor=(0.37, 1.01),
                ncol=4, frameon=False, fontsize=7.8, columnspacing=1.0, handlelength=2.1)
 
-    # Panel (c): Six-Axis Sensor Noise Robustness at M=64
+    # Panel (c): Six-Axis Sensor Noise Robustness at M=64 (bit-exact CPU seed=777 parity matching Tables 5 & 6)
     n_keys = ["clean", "gaussian", "poisson_gaussian", "gain_bias", "dropout", "combined"]
-    n_lbl = ["Clean", "Gauss", "Pois.\n+G", "Gain\n+Bias", "Drop\n20%", "Comb."]
+    n_lbl = ["Clean\n(N0)", "Gauss\n(N1)", "Pois+G\n(N2)", "Gain+B\n(N3)", "Drop\n(N3b)", "Comb.\n(N4)"]
     xn = np.arange(len(n_keys))
     w = 0.25
-    axes[2].bar(xn - w, [p2["noise_m64"]["zeroshot_flower"][k]["psnr_mean"] for k in n_keys],
+    zs_noise = shield["module_c_baseline_parity"]["noise_m64"]["zs_flower"]
+    pf_noise = shield["module_a_blind_spectral_ablation"]["variants"]["blind_adaptive_ours"]
+    axes[2].bar(xn - w, [zs_noise[k]["psnr_mean"] for k in n_keys],
                 width=w, color=PALETTE["zs_flower"], edgecolor="#222222", linewidth=0.4, label="ZS-FLOWER", zorder=3)
     axes[2].bar(xn, [p2["noise_m64"]["lsi"][k]["psnr_mean"] for k in n_keys],
                 width=w, color=PALETTE["lsi"], edgecolor="#222222", linewidth=0.4, label="LSI (CVPR'25)", zorder=3)
-    axes[2].bar(xn + w, [p2["noise_m64"]["b3_physflow"][k]["psnr_mean"] for k in n_keys],
+    axes[2].bar(xn + w, [pf_noise[k]["psnr_mean"] for k in n_keys],
                 width=w, color=PALETTE["physflow"], edgecolor="#222222", linewidth=0.4, label="PhysFlow (Ours)", zorder=3)
-    axes[2].set_xticks(xn); axes[2].set_xticklabels(n_lbl, fontsize=7.6)
+    axes[2].set_xticks(xn); axes[2].set_xticklabels(n_lbl, fontsize=6.6)
     axes[2].set_xlabel("Sensor Perturbation Regime ($M = 64$)", fontsize=8.5)
     axes[2].set_ylabel("Reconstruction PSNR (dB) ↑", fontsize=8.5)
     axes[2].set_ylim(0.0, 20.5)
     axes[2].grid(axis="y", zorder=0)
     axes[2].legend(loc="upper center", bbox_to_anchor=(0.5, 1.24), ncol=3, frameon=False, fontsize=7.4, columnspacing=0.65, handletextpad=0.35)
     axes[2].text(0.5, -0.38, "(c) Sensor Noise Robustness (M = 64)", transform=axes[2].transAxes,
-                 ha="center", va="top", fontsize=9.0, fontweight="bold")
+                 ha="center", va="top", fontsize=9.0, fontweight="bold", color="#000000")
 
     fig.savefig(FIG_DIR / "fig3_rate_and_noise.pdf", bbox_inches="tight")
     fig.savefig(FIG_DIR / "fig3_rate_and_noise.png", dpi=180, bbox_inches="tight")
@@ -348,11 +356,11 @@ def make_fig4_wflw_external(p3_ext: dict) -> None:
         for ci, htxt in enumerate(hdrs):
             cx = x_start + ci * (s + pad) + s * 0.5
             ax_top.text(cx, -26, htxt, ha="center", va="bottom", fontsize=8.4, fontweight="bold",
-                        color=PALETTE["physflow"] if ci == 3 else "#111111")
+                        color="#000000")
     for ri, (s_left, s_right) in enumerate(pairs):
         y_lbl = row_y_centers[ri] + s + 46
-        ax_top.text(2 * s + 1.5 * pad, y_lbl, f"Subset: {sub_names[s_left]}", ha="center", va="center", fontsize=8.4, fontweight="bold", color="#222222")
-        ax_top.text(6 * s + 4.5 * pad + mid_gap, y_lbl, f"Subset: {sub_names[s_right]}", ha="center", va="center", fontsize=8.4, fontweight="bold", color="#222222")
+        ax_top.text(2 * s + 1.5 * pad, y_lbl, f"Subset: {sub_names[s_left]}", ha="center", va="center", fontsize=8.4, fontweight="bold", color="#000000")
+        ax_top.text(6 * s + 4.5 * pad + mid_gap, y_lbl, f"Subset: {sub_names[s_right]}", ha="center", va="center", fontsize=8.4, fontweight="bold", color="#000000")
     ax_top.text(0.5, -0.025, "(a) Qualitative Generalization Across Six Challenging WFLW Subsets (M = 64)",
                 transform=ax_top.transAxes, ha="center", va="top", fontsize=9.0, fontweight="bold")
 
@@ -462,37 +470,37 @@ def make_fig5_downstream_pareto(p2: dict, p3_down: dict, extras: dict) -> None:
     ax_p2 = ax_p.twinx()
     ax_p2.spines["top"].set_visible(False)
     ax_p2.spines["right"].set_visible(True)
-    ax_p2.spines["right"].set_color(PALETTE["pnp_flow"])
+    ax_p2.spines["right"].set_color("#000000")
     ax_p2.spines["right"].set_linewidth(0.8)
 
-    l1 = ax_p.plot(secs, adas, "o-", color=PALETTE["physflow"], linewidth=2.2, markersize=5.5, label="AdaFace Cosine ↑", zorder=4)
-    l2 = ax_p2.plot(secs, lpips_l, "s--", color=PALETTE["pnp_flow"], linewidth=1.9, markersize=5.0, label="Perceptual LPIPS ↓", zorder=3)
+    l1 = ax_p.plot(secs, adas, "o-", color=PALETTE["physflow"], linewidth=2.2, markersize=5.5, label="AdaFace Cosine (left) ↑", zorder=4)
+    l2 = ax_p2.plot(secs, lpips_l, "s--", color=PALETTE["pnp_flow"], linewidth=1.9, markersize=5.0, label="LPIPS (right) ↓", zorder=3)
 
     # Highlight 16-step default elbow and LSI latency reference line
     ax_p.axvline(p2["timings_sec_per_img_m64"]["lsi"], color=PALETTE["lsi"], linestyle=":", linewidth=1.1, zorder=2)
     ax_p.text(p2["timings_sec_per_img_m64"]["lsi"] - 0.06, 0.0329, "LSI\n(2.57s)", ha="right", va="top",
-              fontsize=7.3, color=PALETTE["lsi"], fontweight="bold")
+              fontsize=7.3, color="#000000", fontweight="bold")
 
-    offsets = {8: (14, 8), 16: (16, 8), 32: (0, 8), 50: (-12, -14)}
+    offsets = {8: (15, 6), 16: (14, 8), 32: (0, 8), 50: (-4, 11)}
     for st, ts, av in zip(steps_list, secs, adas):
         ox, oy = offsets[st]
         ax_p.annotate(f"{st} st", (ts, av), textcoords="offset points", xytext=(ox, oy),
-                      ha="center", fontsize=7.6, fontweight="bold", color=PALETTE["physflow"])
+                      ha="center", fontsize=7.6, fontweight="bold", color="#000000")
 
     ax_p.set_xlim(0.20, 3.00)
     ax_p.set_ylim(0.0255, 0.0338)
     ax_p2.set_ylim(0.629, 0.646)
-    ax_p.set_xlabel("Latency / 512px Image (s, RTX 3090)", fontsize=8.4)
-    ax_p.set_ylabel("AdaFace Cosine ↑", fontsize=8.5, color=PALETTE["physflow"])
-    ax_p2.set_ylabel("Perceptual LPIPS ↓", fontsize=8.5, color=PALETTE["pnp_flow"])
-    ax_p.tick_params(axis="y", colors=PALETTE["physflow"])
-    ax_p2.tick_params(axis="y", colors=PALETTE["pnp_flow"])
+    ax_p.set_xlabel("Latency / 512px Image (s, RTX 3090)", fontsize=8.4, color="#000000")
+    ax_p.set_ylabel("AdaFace Cosine ↑", fontsize=8.5, color="#000000")
+    ax_p2.set_ylabel("Perceptual LPIPS ↓", fontsize=8.5, color="#000000")
+    ax_p.tick_params(axis="y", colors="#000000")
+    ax_p2.tick_params(axis="y", colors="#000000")
     ax_p.grid(True, zorder=0)
     lines_all = l1 + l2
     ax_p.legend(lines_all, [ln.get_label() for ln in lines_all], loc="upper center", bbox_to_anchor=(0.5, 1.24),
-                ncol=2, frameon=False, fontsize=7.6, columnspacing=0.8)
+                ncol=2, frameon=False, fontsize=7.3, columnspacing=0.6)
     ax_p.text(0.5, -0.35, "(c) Speed–Quality Pareto (M = 64)", transform=ax_p.transAxes,
-              ha="center", va="top", fontsize=9.0, fontweight="bold")
+              ha="center", va="top", fontsize=9.0, fontweight="bold", color="#000000")
 
     fig.savefig(FIG_DIR / "fig5_downstream_pareto.pdf", bbox_inches="tight")
     fig.savefig(FIG_DIR / "fig5_downstream_pareto.png", dpi=180, bbox_inches="tight")
@@ -523,9 +531,9 @@ def make_fig6_m256_and_failures() -> None:
         sp.set_visible(False)
     for ci, ch in enumerate(["Ground\nTruth", "ZS-FLOWER\n(ICLR'26)", "LSI\n(CVPR'25)", "PhysFlow\n(Ours)"]):
         ax_a.text(ci * (s + pad) + s * 0.5, -28, ch, ha="center", va="bottom", fontsize=8.5, fontweight="bold",
-                  color=PALETTE["physflow"] if ci == 3 else "#111111", linespacing=1.08)
+                  color="#000000", linespacing=1.08)
     ax_a.text(0.5, -0.045, "(a) High-Fidelity Recovery at M = 256 (SR = 0.39%)", transform=ax_a.transAxes,
-              ha="center", va="top", fontsize=9.2, fontweight="bold")
+              ha="center", va="top", fontsize=9.2, fontweight="bold", color="#000000")
 
     ax_b = fig.add_subplot(gs[0, 1])
     ax_b.imshow(mos_b)
@@ -534,9 +542,9 @@ def make_fig6_m256_and_failures() -> None:
         sp.set_visible(False)
     for ci, ch in enumerate(["Ground\nTruth", "PhysFlow\n(M = 64)"]):
         ax_b.text(ci * (s + pad) + s * 0.5, -28, ch, ha="center", va="bottom", fontsize=8.5, fontweight="bold",
-                  color="#111111", linespacing=1.08)
+                  color="#000000", linespacing=1.08)
     ax_b.text(0.5, -0.045, "(b) Representative Hard Cases at M = 64", transform=ax_b.transAxes,
-              ha="center", va="top", fontsize=9.2, fontweight="bold")
+              ha="center", va="top", fontsize=9.2, fontweight="bold", color="#000000")
 
     fig.savefig(FIG_DIR / "fig6_m256_and_failures.pdf", bbox_inches="tight")
     fig.savefig(FIG_DIR / "fig6_m256_and_failures.png", dpi=180, bbox_inches="tight")
@@ -550,9 +558,10 @@ def main() -> None:
     p3_down = load_json(OUTPUTS / "phase3_downstream_results.json")
     p3_ext = load_json(OUTPUTS / "phase3_external_lapa_wflw.json")
     extras = load_json(OUTPUTS / "journal_audit_extras.json")
+    shield = load_json(OUTPUTS / "reviewer_shield_results.json")
 
     make_fig1_teaser(p2, extras)
-    make_fig3_rate_and_noise(p2, extras)
+    make_fig3_rate_and_noise(p2, extras, shield)
     make_fig4_wflw_external(p3_ext)
     make_fig5_downstream_pareto(p2, p3_down, extras)
     make_fig6_m256_and_failures()
