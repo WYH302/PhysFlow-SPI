@@ -35,7 +35,7 @@ The framework integrates four tightly coupled, physically grounded components:
 </p>
 
 ### Key Benchmark Results (Single RTX 3090 24 GB)
-- **Training Cost**: `1.39` GPU-hours base adaptation (`83.29` min, `2.80 GB` peak VRAM, `42.73M` trainable parameters) + `8.55` min (`2.27M` refiner) + `15.28` min (optional 4-step distillation) = **`1.79` GPU-hours total**.
+- **Training Cost**: `1.39` GPU-hours base adaptation (`83.29` min, `2.80 GB` peak VRAM via BF16 mixed precision + transformer-block activation checkpointing, `42.73M` trainable parameters) + `8.55` min (`2.27M` refiner) + `15.28` min (optional 4-step distillation) = **`1.79` GPU-hours core aligned** (`1.84` GPU-hours including optional `1.32M` `MD-FaceLoc` trained in `3.45` min).
 - **Inference Throughput**: `55.9 FPS` (`17.88 ms`, `5.55 GFLOPs`) for reconstruction-free 106-point landmark & 40-attribute inference; **`5.09 FPS`** (`0.196 s/img` batched, `13.1x` faster than LSI) for 4-step CFG-free `PhysFlow-Fast`; **`1.12 FPS`** (`0.896 s/img` uncontended, `2.87x` faster than LSI at `2.574 s/img`) for 16-step `PhysFlow` with pixel refinement.
 - **Full-Cohort CelebA-HQ (`N = 479` Strictly Identity-Disjoint Portraits, Inception-v3 FID)**:
 
@@ -129,7 +129,7 @@ Building PhysFlow involved several instructive engineering and theoretical disco
 @article{wu2026physflow,
   author  = {Wu, Yonghao},
   title   = {PhysFlow: Factorized Physics-Aware Pixel-Space Flow Matching for Extreme-Compression Single-Pixel Face Reconstruction},
-  journal = {Optics Communications},
+  journal = {IEEE Transactions (Preprint)},
   year    = {2026},
   note    = {Manuscript submitted for review}
 }
@@ -153,7 +153,7 @@ We gratefully acknowledge the authors of MiniT2I, Latent Space Imaging (LSI), FL
 5. **真实欧洲 DMD 光学台架实测与任意非对齐 FOV 零重训拓展**：零重训 `PhysFlow-ZS` 在 5 套法国 CREATIS 实验室真实物理 DMD + 光谱仪台架数据上全面夺冠（差分采样 `15.67–21.17 dB`，单次曝光单极性 `{0,1}` 采样 `17.86 dB` 显著胜 `PnP-Flow 10.44 dB` 与 `TV-FISTA 13.16 dB`）；针对任意非对齐视场，仅用现有 5,000 张人脸训练的 `1.32M` ZCA 白化测量域定位器 `MD-FaceLoc`（`0.053 ms/图`，定位误差 `1.76 / 1.68 px`）结合精确线性算子拉回，在零扩增数据、零重训生成器前提下将 `M=256` 非对齐重建提升至 **`19.92 dB` PSNR（胜 LSI `+3.97 dB`）**与 **`3.72x` Buffalo\_L 身份相似度**（达 Oracle 位姿上界的 `89.8%`）。
 
 ### 算力成本与核心性能（单张 RTX 3090 24 GB）
-- **总训练开销**：基础三阶段仅需 **1.39 GPU 小时**（峰值显存 **2.80 GB**），叠加 `2.27M` 精修头（`8.55 min`）与可选 4 步蒸馏（`15.28 min`）总计仅 **1.79 GPU 小时**。
+- **总训练开销**：基础三阶段仅需 **1.39 GPU 小时**（采用 BF16 混合精度与 Transformer 块激活检查点，峰值显存仅 **2.80 GB**），叠加 `2.27M` 精修头（`8.55 min`）与可选 4 步蒸馏（`15.28 min`）总计仅 **1.79 GPU 小时**（含可选非对齐 `1.32M` `MD-FaceLoc` 的 `3.45 min` 训练共 **1.84 GPU 小时**）。
 - **推理吞吐**：免重建 106 点关键点与 40 属性分析达 **55.9 FPS**（`17.88 ms`）；4 步无 CFG `PhysFlow-Fast` 批处理达 **5.09 FPS**（`0.196 s/图`，较 LSI 快 **13.1 倍**）；16 步完整 `PhysFlow` 为 `0.896 s/图`（较 LSI 快 **2.87 倍**）。
 
 ### 许可证与联系
