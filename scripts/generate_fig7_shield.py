@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_FIG = ROOT.parent / "paper" / "figures" / "fig7_shield_ablations.pdf"
-PREVIEW_PNG = ROOT / "outputs" / "fig7_preview.png"
+OUT_FIG = ROOT / "outputs" / "figures" / "fig7_shield_ablations.pdf"
+PREVIEW_PNG = ROOT / "outputs" / "figures" / "fig7_shield_ablations.png"
 
 
 def main() -> None:
@@ -30,7 +30,7 @@ def main() -> None:
 
     plt.rcParams.update({
         "font.family": "serif",
-        "font.serif": ["Times New Roman", "DejaVu Serif"],
+        "font.serif": ["DejaVu Serif", "Times New Roman", "STIXGeneral"],
         "mathtext.fontset": "stix",
         "text.color": "#000000",
         "axes.labelcolor": "#000000",
@@ -43,18 +43,18 @@ def main() -> None:
         "xtick.labelsize": 7.5,
         "ytick.labelsize": 7.5,
         "legend.fontsize": 7.1,
-        "axes.linewidth": 0.75,
+        "axes.linewidth": 0.8,
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
     })
 
-    # Harmonized Elsevier palette matching Figs. 3 & 5
-    C_PHYS = "#1D4E78"   # Deep navy (PhysFlow Ours)
-    C_RED = "#B83A2D"    # Brick red (Fixed small / LSI)
-    C_GREEN = "#2E8B6E"  # Teal green (Fixed large / ZS-FLOWER)
-    C_ORG = "#D97724"    # Warm amber (lambda_adapt / PnP-Flow)
-    C_PURP = "#6B4C9A"   # Muted purple (Wiener-LMMSE)
-    C_GRAY = "#7D8790"   # Slate gray (TV-FISTA)
+    # Exact unified Okabe-Ito / Academic palette matching all figures
+    C_PHYS = "#1B4F72"   # Deep Navy (PhysFlow Ours)
+    C_RED = "#B03A2E"    # Muted Crimson (Fixed small / LSI)
+    C_GREEN = "#148F77"  # Muted Teal (Fixed large / ZS-FLOWER)
+    C_ORG = "#D35400"    # Burnt Amber (lambda_adapt / PnP-Flow)
+    C_PURP = "#6C3483"   # Muted Plum (Wiener-LMMSE / GCV)
+    C_GRAY = "#7F8C8D"   # Slate Gray (TV-FISTA)
 
     fig, axes = plt.subplots(1, 3, figsize=(11.6, 3.30), gridspec_kw={"width_ratios": [1.22, 1.0, 1.15], "wspace": 0.44})
 
@@ -137,8 +137,8 @@ def main() -> None:
     ax_r.set_ylim(0.47, 0.72)
     ax_r.spines["top"].set_visible(False)
 
-    ax.axvline(0.35, color=C_PHYS, linestyle="-.", linewidth=0.85, alpha=0.65)
-    ax.text(0.365, 16.03, r"Default $t_0=0.35$", fontsize=6.9, color="#000000", fontweight="bold")
+    ax.axvline(0.25, color=C_PHYS, linestyle="-.", linewidth=0.9, alpha=0.75)
+    ax.text(0.265, 16.03, r"$t_0(64)=0.25$", fontsize=6.9, color="#000000", fontweight="bold")
 
     hl1, lb1 = ax.get_legend_handles_labels()
     hl2, lb2 = ax_r.get_legend_handles_labels()
